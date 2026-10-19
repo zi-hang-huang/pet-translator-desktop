@@ -3,6 +3,13 @@
 浮在任意 Windows 窗口之上的翻译球。形象与面板取自已完成的 DSH 插件（`../dsh-pet-translator/`），
 翻译后端走 **DeepSeek 网页版**（复用你的登录态，不需要 API Key）。
 
+## 下载
+
+**[⬇ pet-translator-v0.1.0-win64.zip](https://github.com/zi-hang-huang/pet-translator-desktop/releases/download/v0.1.0/pet-translator-v0.1.0-win64.zip)**（139.8 MB，解压后 322.6 MB）
+
+下载 → 解压到任意目录 → 双击里面的 `翻译球.exe`。程序未签名，Windows SmartScreen 会拦一下，点「更多信息 → 仍要运行」。
+首次启动要登录一次 DeepSeek，之后一直有效。
+
 **球和面板是两个独立窗口**：各自记位置、各拖各的，互不牵连 —— 面板挪到边上，球照样待在你顺手的地方。
 
 - 规划与决策：[PLAN.md](PLAN.md)
@@ -16,7 +23,7 @@
 
 实测：取词 691ms，翻译 1.5~3.7 秒。
 
-还没做：打包成 exe（M6）、浅色主题、朗读。
+还没做：浅色主题、朗读。
 
 ## 跑起来
 
