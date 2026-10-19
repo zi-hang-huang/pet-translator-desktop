@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN" data-state="idle">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      球的窗口。面板已经拆到独立窗口（panel.html），两者互不影响。
+      本地页面，不联网；style/script 必须放开 file:（file:// 下 'self' 是 opaque origin）。
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'self' 'unsafe-inline' file:; script-src 'self' file:; img-src 'self' file: data:; connect-src 'none'"
+    />
+    <title>翻译球</title>
+    <link rel="stylesheet" href="../../assets/tokens.css" />
+    <link rel="stylesheet" href="ball.css" />
+  </head>
+  <body>
+    <!-- 位置与尺寸由主进程推下来（.stage 的内联 left/top/width/height） -->
+    <div class="stage" id="stage">
+      <button id="ball" class="ball" type="button" title="单击翻译选中的文字 · 拖动移动 · 右键菜单">
+        <span class="ring"></span>
+        <span class="eyes"><span class="eye l"></span><span class="eye r"></span></span>
+      </button>
+    </div>
+    <script src="ball.js"></script>
+  </body>
+</html>

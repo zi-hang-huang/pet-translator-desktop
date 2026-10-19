@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  翻译球 · 四态规范图（**规范图，不是运行素材**）
+  ────────────────────────────────────────────────────────────────────
+  从左到右：待机 / 倾听 / 翻译中 / 出错。
+  眼睛几何与动效参数取自插件 CSS，见 DESIGN.md §1。
+  运行时要用的只有 ball.svg + 状态类名，状态切换靠 CSS 类，不靠四张图。
+
+  单元格宽 156（球 128 + 左右各 14 留白），倾听态的光环才不会压到邻居。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 772 268" width="772" height="268">
+  <defs>
+    <radialGradient id="sBody" gradientUnits="userSpaceOnUse" cx="40.96" cy="33.28" r="128.6">
+      <stop offset="0" stop-color="#7cc4ff"/>
+      <stop offset="0.45" stop-color="#3a8dff"/>
+      <stop offset="1" stop-color="#1f5fd0"/>
+    </radialGradient>
+    <linearGradient id="sTop" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="46">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.42"/>
+      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="sUnder" gradientUnits="userSpaceOnUse" cx="64" cy="112" r="64">
+      <stop offset="0" stop-color="#00143c" stop-opacity="0.42"/>
+      <stop offset="0.55" stop-color="#00143c" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#00143c" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="sClip"><circle cx="64" cy="64" r="64"/></clipPath>
+
+    <!-- 球体（不含眼睛），供四次 use 复用 -->
+    <g id="sSphere">
+      <circle cx="64" cy="64" r="64" fill="url(#sBody)"/>
+      <g clip-path="url(#sClip)">
+        <rect x="0" y="0" width="128" height="128" fill="url(#sTop)"/>
+        <circle cx="64" cy="112" r="64" fill="url(#sUnder)" opacity="0.85"/>
+      </g>
+    </g>
+
+    <!-- 正常眼与眯缝眼，也复用 -->
+    <g id="sEyesOpen" fill="#0d1a33">
+      <ellipse cx="48.25" cy="59.71" rx="9.85" ry="11.07"/>
+      <ellipse cx="84.09" cy="59.71" rx="9.85" ry="11.07"/>
+    </g>
+    <g id="sEyesBusy" fill="#0d1a33">
+      <ellipse cx="48.25" cy="69" rx="9.85" ry="2.46"/>
+      <ellipse cx="84.09" cy="69" rx="9.85" ry="2.46"/>
+    </g>
+    <g id="sEyesError" fill="#7a1d1d">
+      <ellipse cx="48.25" cy="59.71" rx="9.85" ry="8.5"/>
+      <ellipse cx="84.09" cy="59.71" rx="9.85" ry="8.5"/>
+    </g>
+  </defs>
+
+  <rect width="772" height="268" fill="#12161c"/>
+
+  <!-- ── 1. 待机 ────────────────────────────────────────────────────── -->
+  <g transform="translate(46,34)">
+    <use href="#sSphere"/>
+    <use href="#sEyesOpen"/>
+  </g>
+  <text x="110" y="200" text-anchor="middle" fill="#e8ecf4" font-size="15" font-weight="600"
+        font-family="Segoe UI, Microsoft YaHei, sans-serif">待机</text>
+  <text x="110" y="222" text-anchor="middle" fill="#7f92ad" font-size="12"
+        font-family="Segoe UI, Microsoft YaHei, sans-serif">呼吸 4.2s · 眨眼 5.6s</text>
+
+  <!-- ── 2. 倾听（出现选区，光环从球边缘向外脉一次） ────────────────── -->
+  <g transform="translate(230,34)">
+    <circle cx="64" cy="64" r="77" fill="none" stroke="#7cc4ff" stroke-opacity="0.22" stroke-width="4"/>
+    <circle cx="64" cy="64" r="70" fill="none" stroke="#7cc4ff" stroke-opacity="0.55" stroke-width="3"/>
+    <use href="#sSphere"/>
+    <use href="#sEyesOpen"/>
+  </g>
+  <text x="294" y="200" text-anchor="middle" fill="#e8ecf4" font-size="15" font-weight="600"
+        font-family="Segoe UI, Microsoft YaHei, sans-serif">倾听</text>
+  <text x="294" y="222" text-anchor="middle" fill="#7f92ad" font-size="12"
+        font-family="Segoe UI, Microsoft YaHei, sans-serif">光环脉冲 520ms</text>
+
+  <!-- ── 3. 翻译中（半闭眼 + 整体旋转） ────────────────────────────── -->
+  <g transform="translate(414,34)">
+    <use href="#sSphere"/>
+    <use href="#sEyesBusy"/>
+    <!-- 虚线环：静态图里表达「正在转」 -->
+    <circle cx="64" cy="64" r="57" fill="none" stroke="#dcecff" stroke-opacity="0.3"
+            stroke-width="3" stroke-linecap="round" stroke-dasharray="20 34"/>
+  </g>
+  <text x="478" y="200" text-anchor="middle" fill="#e8ecf4" font-size="15" font-weight="600"
+        font-family="Segoe UI, Microsoft YaHei, sans-serif">翻译中</text>
+  <text x="478" y="222" text-anchor="middle" fill="#7f92ad" font-size="12"
+        font-family="Segoe UI, Microsoft YaHei, sans-serif">转圈 1.1s · 半闭眼</text>
+
+  <!-- ── 4. 出错 ────────────────────────────────────────────────────── -->
+  <g transform="translate(598,34)">
+    <use href="#sSphere"/>
+    <use href="#sEyesError"/>
+  </g>
+  <text x="662" y="200" text-anchor="middle" fill="#e8ecf4" font-size="15" font-weight="600"
+        font-family="Segoe UI, Microsoft YaHei, sans-serif">出错</text>
+  <text x="662" y="222" text-anchor="middle" fill="#7f92ad" font-size="12"
+        font-family="Segoe UI, Microsoft YaHei, sans-serif">红眼 #7a1d1d · 抖 320ms</text>
+
+  <text x="32" y="252" fill="#4d5a6e" font-size="11"
+        font-family="Consolas, monospace">128×128 viewBox · 眼睛 15.4% × 17.3% · 渐变圆心 32% 26% · 眼距 28%</text>
+</svg>

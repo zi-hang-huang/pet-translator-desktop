@@ -1,0 +1,156 @@
+/*
+ * 翻译球 · 设计令牌
+ *
+ * 一个文件装下球和面板的全部视觉常量，颜色/尺寸/动效都从这里取。
+ * 数值来源：../dsh-pet-translator/lib/client.js 的 CSS 块（插件已定稿版），
+ * 以及 ../dsh-pet-translator/desktop/ui/style.css。
+ *
+ * 用法：在 ui/ball.css 顶部 @import 或直接 <link>，然后只用 var(--tr-*)。
+ * 禁止在业务 CSS 里写死十六进制色值 —— 换主题时只改这一个文件。
+ */
+
+:root {
+  /* ── 球体 ─────────────────────────────────────────────────────────── */
+  --tr-ball-size: 96px;            /* 桌面版基准直径（插件是 52px） */
+  --tr-ball-size-min: 58px;        /* 0.6x */
+  --tr-ball-size-max: 173px;       /* 1.8x */
+  --tr-ball-highlight: #7cc4ff;    /* 径向渐变 0%   高光核心 */
+  --tr-ball-body: #3a8dff;         /* 径向渐变 45%  主体 */
+  --tr-ball-shadow: #1f5fd0;       /* 径向渐变 100% 底部 */
+
+  /* 光源在左上：32% 26% 是体积感的全部来源，改成立即变扁平贴图 */
+  --tr-ball-gradient: radial-gradient(
+    circle at 32% 26%,
+    var(--tr-ball-highlight) 0%,
+    var(--tr-ball-body) 45%,
+    var(--tr-ball-shadow) 100%
+  );
+
+  --tr-ball-lift:
+    0 6px 18px rgba(12, 40, 90, 0.38),          /* 桌面上的投影 */
+    inset 0 -6px 12px rgba(0, 20, 60, 0.35),    /* 底部内转折 */
+    inset 0 6px 12px rgba(255, 255, 255, 0.35); /* 顶部内高光 */
+  --tr-ball-lift-hover:
+    0 8px 24px rgba(12, 40, 90, 0.5),
+    inset 0 -6px 12px rgba(0, 20, 60, 0.35),
+    inset 0 6px 12px rgba(255, 255, 255, 0.45);
+
+  /* 上面两个是「参考尺寸 96px」下的成品值，只给设计稿/预览页用。
+     真正跑起来的球用下面这几个**颜色**配合按比例计算的模糊半径 —— 见 ball.css：
+     阴影必须随球一起缩放，否则球一缩小，固定 18px 的模糊就会被窗口边缘硬切，
+     表现就是球周围一圈发黑。 */
+  --tr-ball-shadow-outer: rgba(12, 40, 90, 0.38);
+  --tr-ball-shadow-outer-hover: rgba(12, 40, 90, 0.55);
+  --tr-ball-shadow-under: rgba(0, 20, 60, 0.35);
+  --tr-ball-shadow-sheen: rgba(255, 255, 255, 0.35);
+  --tr-ball-shadow-sheen-hover: rgba(255, 255, 255, 0.45);
+
+  /* ── 眼睛 ─────────────────────────────────────────────────────────── */
+  --tr-eye-color: #0d1a33;         /* 近黑深蓝，不是纯黑 */
+  --tr-eye-color-error: #7a1d1d;   /* 出错态 */
+  --tr-eye-width: 15.4%;           /* 8/52 */
+  --tr-eye-height: 17.3%;          /* 9/52 */
+  --tr-eye-top: 38%;
+  --tr-eye-left: 30%;
+  --tr-eye-right: 58%;
+  --tr-eye-height-busy: 3.8%;      /* 2/52，翻译中眯成一条缝 */
+
+  /* ── 面板 ─────────────────────────────────────────────────────────── */
+  --tr-panel-width: 340px;
+  --tr-panel-min-height: 240px;
+  --tr-panel-max-height: 560px;
+  --tr-panel-radius: 14px;
+  /* 不透明：0.97 时白底黑字的网页会隐约透上来，正文根本看不清（装机后被用户截图指出） */
+  --tr-panel-bg: #161a22;
+  --tr-panel-border: 1px solid rgba(124, 196, 255, 0.28);
+  --tr-panel-shadow: 0 10px 22px rgba(0, 0, 0, 0.45);
+  --tr-panel-pad: 9px;
+  --tr-panel-gap: 6px;
+
+  /* ── 文字 ─────────────────────────────────────────────────────────── */
+  --tr-text: #e8ecf4;
+  --tr-text-strong: #d7e3f5;
+  --tr-text-muted: #7f92ad;
+  --tr-text-soft: #a9b8cc;
+  --tr-text-error: #ff9b9b;
+  /* 控件文字（次要按钮、下拉、图标）。单独一个令牌，因为它的亮度介于
+     正文和次级之间 —— 用正文太抢眼，用次级又太淡。 */
+  --tr-text-control: #c3d2e6;
+  --tr-font: ui-sans-serif, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  --tr-font-mono: Consolas, "Cascadia Mono", monospace;
+  --tr-fs-body: 13px;
+  --tr-fs-small: 12px;
+  --tr-fs-label: 11px;
+  --tr-lh: 1.55;
+
+  /* ── 内容块 ───────────────────────────────────────────────────────── */
+  --tr-block-radius: 8px;
+  --tr-block-pad: 7px 9px;
+  --tr-src-bg: rgba(255, 255, 255, 0.05);
+  --tr-src-color: var(--tr-text-soft);
+  --tr-out-bg: rgba(124, 196, 255, 0.08);
+  --tr-out-color: #f2f7ff;
+  --tr-block-max-height: 118px;
+  --tr-divider: 1px solid rgba(255, 255, 255, 0.08);
+
+  /* ── 控件 ─────────────────────────────────────────────────────────── */
+  --tr-ctrl-radius: 8px;
+  --tr-input-bg: rgba(0, 0, 0, 0.28);
+  --tr-input-border: 1px solid rgba(255, 255, 255, 0.14);
+  --tr-input-border-focus: 1px solid rgba(124, 196, 255, 0.6);
+  --tr-input-min-height: 62px;
+  --tr-select-bg: rgba(0, 0, 0, 0.35);
+  --tr-btn-primary: linear-gradient(180deg, #4c9bff, #2f7ae0);
+  --tr-btn-primary-hover: linear-gradient(180deg, #5aa6ff, #3a86ec);
+  --tr-btn-ghost-border: 1px solid rgba(255, 255, 255, 0.16);
+  --tr-btn-ghost-hover: rgba(255, 255, 255, 0.08);
+  --tr-chip-bg: rgba(124, 196, 255, 0.14);
+  --tr-chip-color: #bcd8ff;
+  --tr-error-bg: rgba(180, 70, 60, 0.22);
+
+  /* ── 状态灯（桌面版新增：后端是网页，通路状态必须可见） ────────────── */
+  --tr-status-off: #6b7a90;    /* 灰  未登录 */
+  --tr-status-ok: #4c9bff;     /* 蓝  就绪 */
+  --tr-status-warn: #f0b862;   /* 黄  需要人工（验证码 / 过期） */
+  --tr-status-bad: #ff7b7b;    /* 红  断开 */
+
+  /* ── 圆角 / 描边 ──────────────────────────────────────────────────── */
+  --tr-radius-sm: 6px;
+  --tr-radius-md: 8px;
+  --tr-radius-lg: 14px;
+
+  /* ── 动效 ─────────────────────────────────────────────────────────── */
+  --tr-breathe-duration: 4.2s;     /* 呼吸 */
+  --tr-breathe-scale: 1.045;
+  --tr-blink-duration: 5.6s;       /* 眨眼 */
+  --tr-spin-duration: 1.1s;        /* 翻译中转圈 */
+  --tr-pulse-duration: 520ms;      /* 倾听光环（ring 元素，一次） */
+  --tr-ring-from: 0.62;            /* 光环起点 scale：从球心附近长出来 */
+  --tr-ring-spread: 1;             /* 终点 = 球边缘。见 DESIGN §1：透明窗口画不到窗外 */
+  --tr-ring-color: rgba(124, 196, 255, 0.55);
+  --tr-ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --tr-ease-in-out: ease-in-out;
+  /* 拖拽/悬停等交互过渡统一 160ms，超过 200ms 会被感知为迟钝 */
+  --tr-hover-duration: 160ms;
+
+  /* ── 层级 ─────────────────────────────────────────────────────────── */
+  --tr-z-ball: 2147483000;   /* 压过绝大多数窗口内浮层 */
+}
+
+/* ── 减小动效偏好 ─────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --tr-breathe-duration: 0s;
+    --tr-blink-duration: 0s;
+    --tr-spin-duration: 0s;
+    --tr-pulse-duration: 0s;
+  }
+}
+
+/* ── 浅色（M5 之后再启用，先留好钩子） ─────────────────────────────── */
+@media (prefers-color-scheme: light) {
+  :root {
+    /* v1 不切换：桌面浮层在浅色系统上仍用暗面板压住背景噪点。
+       启用时覆盖 --tr-panel-bg / --tr-text / --tr-src-bg / --tr-out-bg 即可。 */
+  }
+}

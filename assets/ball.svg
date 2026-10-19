@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  翻译球 · 球体主素材
+  ────────────────────────────────────────────────────────────────────
+  128×128 viewBox，正圆铺满，等比缩放到任意直径都清晰（矢量，无位图）。
+
+  所有数值来自前身插件的 CSS（../dsh-pet-translator/lib/client.js）：
+
+    background: radial-gradient(circle at 32% 26%, #7cc4ff 0%, #3a8dff 45%, #1f5fd0 100%)
+      → 渐变圆心 (40.96, 33.28)，farthest-corner 半径 128.6（userSpaceOnUse）
+    box-shadow: inset 0 6px 12px rgba(255,255,255,.35)   → 顶部内高光
+                inset 0 -6px 12px rgba(0,20,60,.35)      → 底部内转折
+                0 6px 18px rgba(12,40,90,.38)            → 外投影（不画在图里，交给 CSS，见下）
+
+  眼睛几何（8×9px / 52px 直径 → 19.7×22.1 / 128）：
+    left 30% / 58%，top 38% → cx 48.25 / 84.09，cy 59.71，rx 9.85，ry 11.07
+
+  外投影故意不烘焙进 SVG：它要跟随 CSS 的 hover/拖拽状态变化，
+  由 .ball 的 box-shadow 令牌（tr-ball-lift）负责。
+  若需要「自包含、贴图即可用」的版本，另导 ball-flat.png（见 assets/README.md）。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="翻译球">
+  <defs>
+    <!-- 主体渐变：光源在左上 32% 26%，这是体积感的全部来源 -->
+    <radialGradient id="trBody" gradientUnits="userSpaceOnUse"
+                    cx="40.96" cy="33.28" r="128.6">
+      <stop offset="0"    stop-color="#7cc4ff"/>
+      <stop offset="0.45" stop-color="#3a8dff"/>
+      <stop offset="1"    stop-color="#1f5fd0"/>
+    </radialGradient>
+
+    <!-- 顶部内高光（inset 0 6px 12px，白 35%）：向下 18px 内衰减干净 -->
+    <linearGradient id="trTopSheen" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="46">
+      <stop offset="0"    stop-color="#ffffff" stop-opacity="0.42"/>
+      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0.10"/>
+      <stop offset="1"    stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- 底部内转折（inset 0 -6px 12px，rgba(0,20,60,.35)）：只在球底 40% 出现 -->
+    <radialGradient id="trUnderShade" gradientUnits="userSpaceOnUse"
+                    cx="64" cy="112" r="64">
+      <stop offset="0"    stop-color="#00143c" stop-opacity="0.42"/>
+      <stop offset="0.55" stop-color="#00143c" stop-opacity="0.16"/>
+      <stop offset="1"    stop-color="#00143c" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- 球体裁剪：内阴影与眼睛都不许溢出圆外 -->
+    <clipPath id="trCircle">
+      <circle cx="64" cy="64" r="64"/>
+    </clipPath>
+  </defs>
+
+  <!-- 球体 -->
+  <circle cx="64" cy="64" r="64" fill="url(#trBody)"/>
+
+  <!-- 内阴影（必须裁剪，否则会画到圆外） -->
+  <g clip-path="url(#trCircle)">
+    <rect x="0" y="0" width="128" height="128" fill="url(#trTopSheen)"/>
+    <circle cx="64" cy="112" r="64" fill="url(#trUnderShade)" opacity="0.85"/>
+  </g>
+
+  <!-- 两只眼睛：#0d1a33，近黑深蓝；半透明边缘让它在蓝底上不显生硬 -->
+  <g fill="#0d1a33">
+    <ellipse cx="48.25" cy="59.71" rx="9.85" ry="11.07"/>
+    <ellipse cx="84.09" cy="59.71" rx="9.85" ry="11.07"/>
+  </g>
+</svg>

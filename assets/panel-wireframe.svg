@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  翻译球 · 面板线框与尺寸标注（**规范图，不是运行素材**）
+  ────────────────────────────────────────────────────────────────────
+  真值：宽 340 固定；高 240~560 自适应；圆角 14；内边距 9。
+  颜色直接写真实值，实现时对应 assets/tokens.css 里的 tr-* 令牌。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 580" width="760" height="580"
+     font-family="Segoe UI, Microsoft YaHei, sans-serif">
+  <rect width="760" height="580" fill="#12161c"/>
+
+  <!-- ── 面板本体 ───────────────────────────────────────────────────── -->
+  <g>
+    <rect x="96" y="52" width="340" height="470" rx="14"
+          fill="#161a22" stroke="#7cc4ff" stroke-opacity="0.28"/>
+
+    <!-- head -->
+    <line x1="96" y1="84" x2="436" y2="84" stroke="#ffffff" stroke-opacity="0.08"/>
+    <circle cx="114" cy="68" r="4" fill="#4c9bff"/>
+    <text x="124" y="72" fill="#d7e3f5" font-size="12" font-weight="600">DeepSeek · 就绪</text>
+    <rect x="330" y="58" width="58" height="20" rx="7" fill="#000000" fill-opacity="0.35"
+          stroke="#ffffff" stroke-opacity="0.14"/>
+    <text x="336" y="72" fill="#dbe6f5" font-size="11">自动</text>
+    <text x="396" y="73" fill="#8fa4c0" font-size="13">⚙</text>
+    <text x="414" y="73" fill="#8fa4c0" font-size="13">✕</text>
+
+    <!-- label 原文 -->
+    <text x="105" y="101" fill="#7f92ad" font-size="11" letter-spacing="0.03em">原文 · 128 字</text>
+    <!-- 原文块 -->
+    <rect x="105" y="108" width="322" height="88" rx="8" fill="#ffffff" fill-opacity="0.05"/>
+    <text x="114" y="128" fill="#a9b8cc" font-size="12">选中前的原文……</text>
+    <text x="114" y="146" fill="#6f7f92" font-size="12">（max-height 118，超出滚动）</text>
+
+    <!-- label 译文 -->
+    <text x="105" y="216" fill="#7f92ad" font-size="11" letter-spacing="0.03em">译文 · 1.8 秒</text>
+    <!-- 译文块 -->
+    <rect x="105" y="223" width="322" height="106" rx="8" fill="#7cc4ff" fill-opacity="0.08"/>
+    <text x="114" y="244" fill="#f2f7ff" font-size="12.5">The translated text……</text>
+    <text x="114" y="264" fill="#8fa4c0" font-size="11">点击整块 = 复制译文</text>
+
+    <!-- 输入框 -->
+    <rect x="105" y="340" width="322" height="62" rx="9" fill="#000000" fill-opacity="0.28"
+          stroke="#ffffff" stroke-opacity="0.14"/>
+    <text x="114" y="362" fill="#7f92ad" font-size="12">或直接输入要翻译的文字…</text>
+
+    <!-- 按钮行 -->
+    <rect x="105" y="412" width="86" height="28" rx="8" fill="#3a8dff"/>
+    <text x="128" y="431" fill="#ffffff" font-size="12" font-weight="600">翻译</text>
+    <text x="200" y="431" fill="#7f92ad" font-size="11">Ctrl+Enter</text>
+
+    <!-- foot -->
+    <line x1="96" y1="486" x2="436" y2="486" stroke="#ffffff" stroke-opacity="0.08"/>
+    <text x="105" y="508" fill="#7f92ad" font-size="11">网页版 · 串行 1/1 · 不写会话历史</text>
+  </g>
+
+  <!-- ── 尺寸标注 ───────────────────────────────────────────────────── -->
+  <g stroke="#3d4a5c" stroke-width="1" fill="none">
+    <line x1="76" y1="52" x2="76" y2="522"/>
+    <line x1="70" y1="52" x2="82" y2="52"/>
+    <line x1="70" y1="522" x2="82" y2="522"/>
+    <line x1="96" y1="540" x2="436" y2="540"/>
+    <line x1="96" y1="534" x2="96" y2="546"/>
+    <line x1="436" y1="534" x2="436" y2="546"/>
+  </g>
+  <text x="66" y="292" fill="#5d6b7f" font-size="11" text-anchor="middle"
+        transform="rotate(-90 66 292)">470（内容自适应 240~560）</text>
+  <text x="266" y="560" fill="#5d6b7f" font-size="11" text-anchor="middle">340（固定）</text>
+
+  <!-- ── 右侧标注 ───────────────────────────────────────────────────── -->
+  <g stroke="#3d4a5c" stroke-width="1" stroke-dasharray="3 3">
+    <line x1="440" y1="68" x2="470" y2="68"/>
+    <line x1="440" y1="152" x2="470" y2="132"/>
+    <line x1="440" y1="276" x2="470" y2="262"/>
+    <line x1="440" y1="371" x2="470" y2="386"/>
+    <line x1="440" y1="426" x2="470" y2="452"/>
+    <line x1="440" y1="500" x2="470" y2="516"/>
+  </g>
+  <g fill="#9fb0c8" font-size="11.5">
+    <text x="476" y="64">① 连接状态灯（桌面版新增）</text>
+    <text x="476" y="80" fill="#6f7f92" font-size="10.5">灰 未登录 / 蓝 就绪 / 黄 需人工 / 红 断</text>
+
+    <text x="476" y="128">② 原文块</text>
+    <text x="476" y="144" fill="#6f7f92" font-size="10.5">bg rgba(255,255,255,.05) · 文字 #a9b8cc</text>
+
+    <text x="476" y="258">③ 译文块</text>
+    <text x="476" y="274" fill="#6f7f92" font-size="10.5">bg rgba(124,196,255,.08) · 点击复制</text>
+
+    <text x="476" y="382">④ 输入框 min-h 62</text>
+    <text x="476" y="398" fill="#6f7f92" font-size="10.5">聚焦描边 rgba(124,196,255,.6)</text>
+
+    <text x="476" y="448">⑤ 主按钮</text>
+    <text x="476" y="464" fill="#6f7f92" font-size="10.5">渐变 #4c9bff → #2f7ae0</text>
+
+    <text x="476" y="512">⑥ 状态脚注</text>
+    <text x="476" y="528" fill="#6f7f92" font-size="10.5">11px #7f92ad · 上边框 rgba(255,255,255,.08)</text>
+  </g>
+
+  <text x="96" y="34" fill="#e8ecf4" font-size="13" font-weight="600">面板结构 · 340 × (240~560)</text>
+</svg>

@@ -1,0 +1,46 @@
+{
+  "name": "pet-translator-desktop",
+  "productName": "翻译球",
+  "version": "0.1.0",
+  "private": true,
+  "description": "翻译球 · 桌面独立版 —— 浮在任意窗口之上的翻译球，形象取自 DSH 插件，翻译走 DeepSeek 网页版",
+  "main": "src/main/index.cjs",
+  "scripts": {
+    "start": "electron .",
+    "smoke": "electron . --smoke",
+    "pack": "powershell -ExecutionPolicy Bypass -File scripts/pack.ps1",
+    "dist": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^44.9.0"
+  },
+  "build": {
+    "appId": "com.pet.translator",
+    "productName": "翻译球",
+    "directories": {
+      "output": "dist-builder"
+    },
+    "files": [
+      "src/**/*",
+      "assets/tokens.css",
+      "assets/tray/*",
+      "assets/icon.ico",
+      "package.json"
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        "portable",
+        "nsis"
+      ]
+    },
+    "portable": {
+      "artifactName": "翻译球-${version}.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
+  }
+}

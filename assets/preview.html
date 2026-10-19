@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>翻译球 · 素材总览</title>
+<link rel="stylesheet" href="tokens.css" />
+<style>
+  /* 总览页自己的排版，不属于产品 UI */
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 32px 40px 56px;
+    background: #0f1420;
+    color: var(--tr-text);
+    font-family: var(--tr-font);
+    font-size: 14px;
+  }
+  h1 { margin: 0 0 4px; font-size: 22px; font-weight: 650; letter-spacing: -0.01em; }
+  .sub { color: var(--tr-text-muted); font-size: 12.5px; margin-bottom: 28px; }
+  .sub code { color: #9fc4f0; font-family: var(--tr-font-mono); }
+  h2 {
+    margin: 34px 0 14px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #cdd9ea;
+    display: flex; align-items: center; gap: 10px;
+  }
+  h2::after {
+    content: ""; flex: 1; height: 1px;
+    background: linear-gradient(90deg, rgba(124,196,255,.22), transparent);
+  }
+  .card {
+    background: #161b26;
+    border: 1px solid rgba(124,196,255,.14);
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .row { display: flex; flex-wrap: wrap; gap: 26px; align-items: flex-end; }
+  .cell { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .cap { font-size: 11.5px; color: var(--tr-text-muted); font-family: var(--tr-font-mono); }
+
+  /* ── 球：完全用 tokens 里的值，和产品同一套 ───────────────────── */
+  .ball {
+    position: relative;
+    border: none; padding: 0;
+    border-radius: 50%;
+    background: var(--tr-ball-gradient);
+    box-shadow: var(--tr-ball-lift);
+    animation: breathe var(--tr-breathe-duration) var(--tr-ease-in-out) infinite;
+  }
+  .ball .eyes { position: absolute; inset: 0; }
+  .ball .eye {
+    position: absolute;
+    top: var(--tr-eye-top);
+    width: var(--tr-eye-width);
+    height: var(--tr-eye-height);
+    border-radius: 50%;
+    background: var(--tr-eye-color);
+    animation: blink var(--tr-blink-duration) infinite;
+  }
+  .ball .eye.l { left: var(--tr-eye-left); animation-delay: .06s; }
+  .ball .eye.r { left: var(--tr-eye-right); }
+
+  .ball.listening { animation: breathe var(--tr-breathe-duration) infinite; }
+  .ball .ring {
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    border: 3px solid var(--tr-ring-color);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .ball.listening .ring { animation: ring-out 1.5s var(--tr-ease-out) infinite; }
+  .ball.busy { animation: spin var(--tr-spin-duration) linear infinite; }
+  .ball.busy .eye { height: var(--tr-eye-height-busy); top: 52%; animation: none; }
+  .ball.error .eye { background: var(--tr-eye-color-error); }
+  .ball.error { animation: shake .32s ease-in-out 2; }
+
+  @keyframes breathe { 0%,100% { transform: scale(1); } 50% { transform: scale(var(--tr-breathe-scale)); } }
+  @keyframes blink { 0%,92%,100% { height: var(--tr-eye-height); } 95% { height: 3%; } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes ring-out {
+    0% { opacity: .7; transform: scale(1); }
+    100% { opacity: 0; transform: scale(var(--tr-ring-spread)); }
+  }
+  @keyframes shake {
+    0%,100% { transform: translateX(0); }
+    25% { transform: translateX(-3px); }
+    75% { transform: translateX(3px); }
+  }
+
+  /* ── 面板实样 ─────────────────────────────────────────────────── */
+  .panel {
+    width: var(--tr-panel-width);
+    display: flex; flex-direction: column;
+    border-radius: var(--tr-panel-radius);
+    background: var(--tr-panel-bg);
+    border: var(--tr-panel-border);
+    box-shadow: var(--tr-panel-shadow);
+    overflow: hidden;
+    font-size: var(--tr-fs-body);
+    line-height: var(--tr-lh);
+  }
+  .head {
+    display: flex; align-items: center; gap: var(--tr-panel-gap);
+    padding: 7px 9px;
+    border-bottom: var(--tr-divider);
+    font-size: var(--tr-fs-small);
+    color: #9fb2cc;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--tr-status-ok); }
+  .title { flex: 1; font-weight: 600; color: var(--tr-text-strong); }
+  .sel {
+    background: var(--tr-select-bg); color: #dbe6f5;
+    border: 1px solid rgba(255,255,255,.14); border-radius: 7px;
+    padding: 3px 6px; font-size: 11.5px;
+  }
+  .icon-btn {
+    border: none; background: transparent; color: #8fa4c0;
+    font-size: 13px; line-height: 1; padding: 3px 5px; border-radius: 6px; cursor: pointer;
+  }
+  .icon-btn:hover { background: rgba(255,255,255,.1); color: var(--tr-text); }
+  .body { padding: var(--tr-panel-pad); }
+  .label { font-size: var(--tr-fs-label); color: var(--tr-text-muted); margin: 2px 0 4px; letter-spacing: .03em; }
+  .blk {
+    border-radius: var(--tr-block-radius);
+    padding: var(--tr-block-pad);
+    max-height: var(--tr-block-max-height);
+    overflow: auto;
+    white-space: pre-wrap; word-break: break-word;
+    font-size: var(--tr-fs-small);
+  }
+  .src { background: var(--tr-src-bg); color: var(--tr-src-color); }
+  .out { background: var(--tr-out-bg); color: var(--tr-out-color); cursor: copy; }
+  .out:empty, .src:empty { color: var(--tr-text-muted); }
+  .input {
+    display: block; width: 100%; margin-top: 9px;
+    min-height: var(--tr-input-min-height);
+    padding: 7px 9px; resize: vertical;
+    border-radius: 9px;
+    border: var(--tr-input-border);
+    background: var(--tr-input-bg);
+    color: #eef3fb; font: inherit; font-size: var(--tr-fs-body);
+    outline: none;
+  }
+  .input:focus { border: var(--tr-input-border-focus); }
+  .actions { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .go {
+    border: none; border-radius: var(--tr-ctrl-radius);
+    padding: 6px 14px; background: var(--tr-btn-primary);
+    color: #fff; font-size: var(--tr-fs-small); font-weight: 600; cursor: pointer;
+  }
+  .hint { margin-left: auto; font-size: var(--tr-fs-label); color: var(--tr-text-muted); }
+  .foot {
+    padding: 6px 9px; border-top: var(--tr-divider);
+    font-size: var(--tr-fs-label); color: var(--tr-text-muted);
+  }
+  .err {
+    margin-bottom: 6px; padding: 6px 9px; border-radius: 7px;
+    background: var(--tr-error-bg); color: #ffb3a7; font-size: var(--tr-fs-small);
+  }
+
+  /* ── 其他 ─────────────────────────────────────────────────────── */
+  .icons { display: flex; gap: 22px; align-items: center; }
+  .icons figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; color: #c3d2e6; }
+  .icons figcaption { font-size: 10.5px; color: var(--tr-text-muted); font-family: var(--tr-font-mono); }
+  .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 10px; }
+  .sw { display: flex; align-items: center; gap: 8px; font-size: 11px; font-family: var(--tr-font-mono); color: #9fb0c8; }
+  .sw i { width: 22px; height: 22px; border-radius: 6px; border: 1px solid rgba(255,255,255,.12); flex: none; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid rgba(255,255,255,.06); }
+  th { color: var(--tr-text-muted); font-weight: 500; font-size: 11px; }
+  td { color: #b7c6da; }
+  td code { font-family: var(--tr-font-mono); color: #9fc4f0; font-size: 11px; }
+  .trays { display: flex; gap: 20px; align-items: flex-end; }
+  .trays figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; background: #1c2432; padding: 12px 16px; border-radius: 8px; }
+  .trays img { image-rendering: -webkit-optimize-contrast; }
+  .trays figcaption { font-size: 10.5px; color: var(--tr-text-muted); font-family: var(--tr-font-mono); }
+</style>
+</head>
+<body>
+
+<h1>翻译球 · 素材总览</h1>
+<div class="sub">
+  取自 <code>../dsh-pet-translator/lib/client.js</code> 与 <code>desktop/ui/style.css</code> 的真值；
+  颜色与尺寸全部走 <code>tokens.css</code> 的 <code>--tr-*</code> 变量。
+</div>
+
+<h2>1 球体 · 各档直径（右键菜单 0.6x~1.8x）</h2>
+<div class="card row">
+  <div class="cell"><div class="ball" style="width:58px;height:58px"><div class="eyes"><span class="eye l"></span><span class="eye r"></span></div></div><span class="cap">0.6x · 58</span></div>
+  <div class="cell"><div class="ball" style="width:96px;height:96px"><div class="eyes"><span class="eye l"></span><span class="eye r"></span></div></div><span class="cap">1.0x · 96 基准</span></div>
+  <div class="cell"><div class="ball" style="width:128px;height:128px"><div class="eyes"><span class="eye l"></span><span class="eye r"></span></div></div><span class="cap">1.33x · 128</span></div>
+  <div class="cell"><div class="ball" style="width:173px;height:173px"><div class="eyes"><span class="eye l"></span><span class="eye r"></span></div></div><span class="cap">1.8x · 173</span></div>
+</div>
+
+<h2>2 四态（live：待机呼吸 / 倾听脉冲 / 翻译转圈 / 出错抖动）</h2>
+<div class="card row">
+  <div class="cell"><div class="ball" style="width:96px;height:96px"><div class="eyes"><span class="eye l"></span><span class="eye r"></span></div></div><span class="cap">待机</span></div>
+  <div class="cell"><div class="ball listening" style="width:96px;height:96px"><span class="ring"></span><div class="eyes"><span class="eye l"></span><span class="eye r"></span></div></div><span class="cap">倾听</span></div>
+  <div class="cell"><div class="ball busy" style="width:96px;height:96px"><div class="eyes"><span class="eye l"></span><span class="eye r"></span></div></div><span class="cap">翻译中</span></div>
+  <div class="cell"><div class="ball error" style="width:96px;height:96px"><div class="eyes"><span class="eye l"></span><span class="eye r"></span></div></div><span class="cap">出错</span></div>
+  <div class="cell"><img src="ball.svg" width="96" height="96" alt="ball.svg" /><span class="cap">ball.svg（静态素材）</span></div>
+</div>
+
+<h2>3 面板实样（340 宽，可直接对照 <code>panel-wireframe.svg</code>）</h2>
+<div class="card row">
+  <div class="panel">
+    <header class="head">
+      <span class="dot"></span>
+      <span class="title">DeepSeek · 就绪</span>
+      <select class="sel"><option>自动</option><option>中文</option><option>English</option></select>
+      <button class="icon-btn" title="设置">⚙</button>
+      <button class="icon-btn" title="关闭">✕</button>
+    </header>
+    <div class="body">
+      <div class="label">原文 · 128 字</div>
+      <div class="src">Attention is all you need. The dominant sequence transduction models are based on complex recurrent or convolutional neural networks.</div>
+      <div class="label">译文 · 1.8 秒</div>
+      <div class="out">你所需要的只是注意力。主流的序列转导模型基于复杂的循环或卷积神经网络。</div>
+      <textarea class="input" rows="3" placeholder="或直接粘贴/输入要翻译的文字，Ctrl+Enter 翻译"></textarea>
+      <div class="actions">
+        <button class="go">翻译</button>
+        <span class="hint">Ctrl+Enter</span>
+      </div>
+    </div>
+    <footer class="foot">网页版 · 串行 1/1 · 不写会话历史</footer>
+  </div>
+
+  <div class="panel">
+    <header class="head">
+      <span class="dot" style="background:var(--tr-status-warn)"></span>
+      <span class="title">设置</span>
+      <button class="icon-btn" title="返回">←</button>
+      <button class="icon-btn" title="关闭">✕</button>
+    </header>
+    <div class="body">
+      <div class="label">目标语言</div>
+      <select class="sel" style="width:100%"><option>自动（中↔英）</option><option>中文</option></select>
+      <div class="label">取词快捷键</div>
+      <select class="sel" style="width:100%"><option>Ctrl+Alt+T</option></select>
+      <div class="label">划词后</div>
+      <select class="sel" style="width:100%"><option>先亮球，点了才译</option><option>直接翻译</option></select>
+      <div class="label">球的大小</div>
+      <select class="sel" style="width:100%"><option>1.0x</option></select>
+    </div>
+    <footer class="foot">需人工：DeepSeek 要求完成人机验证</footer>
+  </div>
+
+  <div class="panel" style="width:232px">
+    <header class="head">
+      <span class="dot"></span>
+      <span class="title">通路状态（新增）</span>
+    </header>
+    <div class="body" style="display:flex;flex-direction:column;gap:11px;padding:12px 12px 14px">
+      <div class="sw"><i style="background:var(--tr-status-off)"></i>未登录</div>
+      <div class="sw"><i style="background:var(--tr-status-ok)"></i>就绪</div>
+      <div class="sw"><i style="background:var(--tr-status-warn)"></i>需人工（验证码/过期）</div>
+      <div class="sw"><i style="background:var(--tr-status-bad)"></i>断开</div>
+    </div>
+    <footer class="foot">网页版后端随时可能掉登录</footer>
+  </div>
+</div>
+
+<h2>4 图标（16×16，stroke-width 1.5，currentColor）</h2>
+<div class="card icons">
+  <figure><img src="icons/gear.svg" width="24" height="24" alt=""><figcaption>gear</figcaption></figure>
+  <figure><img src="icons/close.svg" width="24" height="24" alt=""><figcaption>close</figcaption></figure>
+  <figure><img src="icons/back.svg" width="24" height="24" alt=""><figcaption>back</figcaption></figure>
+  <figure><img src="icons/copy.svg" width="24" height="24" alt=""><figcaption>copy</figcaption></figure>
+  <figure><img src="icons/speaker.svg" width="24" height="24" alt=""><figcaption>speaker</figcaption></figure>
+  <figure><img src="icons/pin.svg" width="24" height="24" alt=""><figcaption>pin</figcaption></figure>
+  <figure><img src="icons/swap.svg" width="24" height="24" alt=""><figcaption>swap</figcaption></figure>
+</div>
+
+<h2>5 托盘图标（简化眼，16px 下可辨）</h2>
+<div class="card trays">
+  <figure><img src="tray/tray-16.png" width="16" height="16" alt=""><figcaption>16</figcaption></figure>
+  <figure><img src="tray/tray-24.png" width="24" height="24" alt=""><figcaption>24</figcaption></figure>
+  <figure><img src="tray/tray-32.png" width="32" height="32" alt=""><figcaption>32</figcaption></figure>
+</div>
+
+<h2>6 调色板</h2>
+<div class="card swatches">
+  <div class="sw"><i style="background:#7cc4ff"></i>#7cc4ff</div>
+  <div class="sw"><i style="background:#3a8dff"></i>#3a8dff</div>
+  <div class="sw"><i style="background:#1f5fd0"></i>#1f5fd0</div>
+  <div class="sw"><i style="background:#0d1a33"></i>#0d1a33</div>
+  <div class="sw"><i style="background:#7a1d1d"></i>#7a1d1d</div>
+  <div class="sw"><i style="background:#161a22"></i>#161a22</div>
+  <div class="sw"><i style="background:#e8ecf4"></i>#e8ecf4</div>
+  <div class="sw"><i style="background:#7f92ad"></i>#7f92ad</div>
+  <div class="sw"><i style="background:#a9b8cc"></i>#a9b8cc</div>
+  <div class="sw"><i style="background:#f2f7ff"></i>#f2f7ff</div>
+  <div class="sw"><i style="background:#4c9bff"></i>#4c9bff</div>
+  <div class="sw"><i style="background:#f0b862"></i>#f0b862</div>
+</div>
+
+<h2>7 动效参数</h2>
+<div class="card">
+  <table>
+    <tr><th>状态</th><th>属性</th><th>参数</th></tr>
+    <tr><td>待机</td><td><code>transform: scale</code></td><td>1 → 1.045，4.2s ease-in-out 循环</td></tr>
+    <tr><td>眨眼</td><td><code>height</code></td><td>17.3% → 3%，5.6s 循环（92%~100% 之间闪），右眼延迟 0.06s</td></tr>
+    <tr><td>翻译中</td><td><code>rotate</code> + 眼高</td><td>360° / 1.1s linear；眼高 3.8%，top 52%</td></tr>
+    <tr><td>倾听</td><td><code>transform + opacity</code></td><td>ring 元素 scale 1 → 1.35，opacity .7 → 0，520ms ease-out</td></tr>
+    <tr><td>出错</td><td><code>translateX</code></td><td>±3px，320ms，抖 2 次；眼变 #7a1d1d</td></tr>
+    <tr><td>悬停</td><td><code>box-shadow</code></td><td>投影加深一档，160ms ease</td></tr>
+  </table>
+</div>
+
+</body>
+</html>

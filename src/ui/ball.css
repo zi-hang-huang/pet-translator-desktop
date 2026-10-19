@@ -1,0 +1,633 @@
+/*
+ * 球窗口的样式：一个球 + 一块面板。
+ *
+ * 几何真值只有两个，其余全部来自 ../../assets/tokens.css：
+ *
+ *   --ball-pad  球圆的留白（主进程按 PAD_RATIO 算好推下来，px）
+ *   .panel      位置尺寸由主进程的布局推下来，CSS 只管长相
+ *
+ * 这里不写任何十六进制色值。要改颜色去改 tokens.css。
+ *
+ * 交互命中的开关：html/body 是 pointer-events: none，只有 .ball 和 .panel 是 auto。
+ * 这样一来「指针在不在可见物上」交给 elementFromPoint 判断，
+ * 留白处点不到东西 → 让窗口穿透 → 下层程序照常收点击（见 ball.js）。
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  user-select: none;
+  cursor: default;
+  font-family: var(--tr-font);
+  pointer-events: none;
+}
+
+/* ── 球 ─────────────────────────────────────────────────────────────── */
+
+.stage {
+  /* 铺满整个窗口：球用 inset 留出投影的边距。
+     之前这里是靠 JS 写 left/top/width/height 的，拆窗口时漏了 ——
+     没有尺寸的容器会让球被压成 0，整只球就"消失"了。 */
+  position: absolute;
+  inset: 0;
+}
+
+.ball {
+  position: absolute;
+  inset: var(--ball-pad, 21px);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--tr-ball-gradient);
+  /* 阴影跟着球一起缩放（--ball-size 由主进程的布局推下来）。
+     固定像素的 18px 模糊在球缩到 0.6 倍时会被窗口留白硬切，
+     表现就是球周围一圈发黑。模糊 + 偏移必须留在留白以内：
+     0.15 + 0.05 = 0.20，小于 PAD_RATIO 的 0.22。 */
+  --d: var(--ball-size, 96px);
+  /* 两档阴影，状态之间只换档、不重写数值 */
+  --ball-shadow:
+    0 calc(var(--d) * 0.05) calc(var(--d) * 0.15) var(--tr-ball-shadow-outer),
+    inset 0 calc(var(--d) * -0.0625) calc(var(--d) * 0.125) var(--tr-ball-shadow-under),
+    inset 0 calc(var(--d) * 0.0625) calc(var(--d) * 0.125) var(--tr-ball-shadow-sheen);
+  --ball-shadow-strong:
+    0 calc(var(--d) * 0.066) calc(var(--d) * 0.19) var(--tr-ball-shadow-outer-hover),
+    inset 0 calc(var(--d) * -0.0625) calc(var(--d) * 0.125) var(--tr-ball-shadow-under),
+    inset 0 calc(var(--d) * 0.0625) calc(var(--d) * 0.125) var(--tr-ball-shadow-sheen-hover);
+  box-shadow: var(--ball-shadow);
+  cursor: grab;
+  outline: none;
+  pointer-events: auto;
+  will-change: transform;
+  animation: breathe var(--tr-breathe-duration) var(--tr-ease-in-out) infinite;
+  transition: box-shadow var(--tr-hover-duration) ease;
+}
+
+.ball:hover {
+  box-shadow: var(--ball-shadow-strong);
+}
+
+.ball:active {
+  cursor: grabbing;
+}
+
+.eyes {
+  position: absolute;
+  inset: 0;
+}
+
+.eye {
+  position: absolute;
+  top: var(--tr-eye-top);
+  width: var(--tr-eye-width);
+  height: var(--tr-eye-height);
+  border-radius: 50%;
+  background: var(--tr-eye-color);
+  animation: blink var(--tr-blink-duration) infinite;
+  /* 跟随鼠标时的位移。120ms 是"跟得上但不抖"的折中 */
+  transition: transform 120ms ease-out;
+  will-change: transform;
+}
+
+.eye.l {
+  left: var(--tr-eye-left);
+  /* 两只眼不同步，看起来才像活的 */
+  animation-delay: 0.06s;
+}
+
+.eye.r {
+  left: var(--tr-eye-right);
+}
+
+.ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid var(--tr-ring-color);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ── 球的状态 ───────────────────────────────────────────────────────── */
+
+html[data-state="listening"] .ring {
+  animation: ring-out var(--tr-pulse-duration) var(--tr-ease-out) 1;
+}
+
+/* 取词那一瞬（约 0.7 秒）：光环从球心涨到球边缘。
+   光环必须画在球**外面**（负 inset），贴边画的话和球身同色、等于没画；
+   窗口留白 21px，-7px 仍在窗口内，不会被裁掉。 */
+html[data-state="listening"] .ring {
+  inset: -7px;
+  opacity: 0.5;
+  border-width: 2px;
+}
+
+html[data-state="listening"] .ball {
+  box-shadow: var(--ball-shadow-strong);
+}
+
+html[data-state="busy"] .ball {
+  animation: spin var(--tr-spin-duration) linear infinite;
+}
+
+html[data-state="busy"] .eye {
+  top: 52%;
+  height: var(--tr-eye-height-busy);
+  animation: none;
+}
+
+html[data-state="error"] .ball {
+  animation: shake 320ms ease-in-out 2;
+}
+
+html[data-state="error"] .eye {
+  background: var(--tr-eye-color-error);
+}
+
+/* 拖拽时停掉呼吸：球在手里还一胀一缩会很怪 */
+html[data-drag="1"] .ball {
+  animation: none;
+  cursor: grabbing;
+}
+
+/* ── 面板 ───────────────────────────────────────────────────────────── */
+
+.panel {
+  position: absolute;
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--tr-panel-radius);
+  background: var(--tr-panel-bg);
+  border: var(--tr-panel-border);
+  box-shadow: var(--tr-panel-shadow);
+  color: var(--tr-text);
+  font-size: var(--tr-fs-body);
+  line-height: var(--tr-lh);
+  pointer-events: auto;
+  animation: panel-in 140ms var(--tr-ease-out);
+}
+
+/* 面板现在是独立窗口：它铺满 body 的内边距区域（32px 是给投影的留白） */
+.panel-window {
+  padding: 32px;
+}
+
+.panel-window .panel {
+  display: flex;
+  inset: 32px;
+}
+
+.view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.view[hidden] {
+  display: none;
+}
+
+.head {
+  /* 标题栏就是窗口拖动把手（见 ball.js）。里面的按钮/下拉自己覆盖光标 */
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  gap: var(--tr-panel-gap);
+  flex: none;
+  padding: 7px 9px;
+  border-bottom: var(--tr-divider);
+  font-size: var(--tr-fs-small);
+  color: var(--tr-text-muted);
+}
+
+/* 通路状态灯：网页版后端随时会掉登录，这个点在面板上是必需品 */
+.lamp {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--tr-status-off);
+}
+
+.lamp[data-status="ok"] {
+  background: var(--tr-status-ok);
+}
+
+.lamp[data-status="warn"] {
+  background: var(--tr-status-warn);
+}
+
+.lamp[data-status="bad"] {
+  background: var(--tr-status-bad);
+}
+
+.head:active {
+  cursor: grabbing;
+}
+
+.head button,
+.head select {
+  cursor: pointer;
+}
+
+.title {
+  flex: 1;
+  font-weight: 600;
+  color: var(--tr-text-strong);
+  white-space: nowrap;
+}
+
+.select {
+  max-width: 120px;
+  padding: 3px 6px;
+  border-radius: 7px;
+  border: var(--tr-input-border);
+  background: var(--tr-select-bg);
+  color: var(--tr-text-control);
+  font: inherit;
+  font-size: var(--tr-fs-label);
+  outline: none;
+}
+
+.icon {
+  border: none;
+  background: transparent;
+  color: var(--tr-text-soft);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 3px 5px;
+  border-radius: 6px;
+  font-family: inherit;
+}
+
+.icon:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--tr-text);
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  padding: var(--tr-panel-pad);
+  overflow-y: auto;
+}
+
+.label {
+  margin: 2px 0 4px;
+  font-size: var(--tr-fs-label);
+  color: var(--tr-text-muted);
+  letter-spacing: 0.03em;
+}
+
+.src,
+.out {
+  max-height: var(--tr-block-max-height);
+  overflow: auto;
+  padding: var(--tr-block-pad);
+  border-radius: var(--tr-block-radius);
+  font-size: var(--tr-fs-small);
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}
+
+.src {
+  background: var(--tr-src-bg);
+  color: var(--tr-src-color);
+}
+
+.out {
+  background: var(--tr-out-bg);
+  color: var(--tr-out-color);
+  cursor: copy;
+}
+
+.out:hover {
+  background: rgba(124, 196, 255, 0.14);
+}
+
+/* 占位文案弱化，避免被当成真实内容。跟着文字颜色走，不然改了颜色这里还是灰的 */
+.src[data-placeholder="1"],
+.out[data-placeholder="1"] {
+  color: var(--tr-text-muted);
+  cursor: default;
+}
+
+/* 失败时复用译文块，但换成错误配色；点它重试 */
+.out.error {
+  background: var(--tr-error-bg);
+  color: var(--tr-text-error);
+  cursor: pointer;
+}
+
+.input {
+  display: block;
+  width: 100%;
+  margin-top: 9px;
+  min-height: var(--tr-input-min-height);
+  padding: 7px 9px;
+  border-radius: 9px;
+  border: var(--tr-input-border);
+  background: var(--tr-input-bg);
+  color: var(--tr-text);
+  font: inherit;
+  font-size: var(--tr-fs-body);
+  resize: none;
+  outline: none;
+  user-select: text;
+}
+
+.input:focus {
+  border: var(--tr-input-border-focus);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.go {
+  padding: 6px 14px;
+  border: none;
+  border-radius: var(--tr-ctrl-radius);
+  background: var(--tr-btn-primary);
+  color: #fff;
+  font: inherit;
+  font-size: var(--tr-fs-small);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.go:not(:disabled):hover {
+  background: var(--tr-btn-primary-hover);
+}
+
+.go:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.ghost {
+  padding: 6px 12px;
+  border-radius: var(--tr-ctrl-radius);
+  border: var(--tr-btn-ghost-border);
+  background: transparent;
+  color: var(--tr-text-control);
+  font: inherit;
+  font-size: var(--tr-fs-small);
+  cursor: pointer;
+}
+
+.ghost:hover {
+  background: var(--tr-btn-ghost-hover);
+}
+
+/* 开关：开机自启这类二元设置用它，比 select 一眼能看出状态 */
+.switch {
+  position: relative;
+  display: inline-flex;
+  width: 34px;
+  height: 18px;
+  flex: none;
+}
+
+.switch input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.switch .track {
+  position: absolute;
+  inset: 0;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.18);
+  transition: background var(--tr-hover-duration) ease;
+  pointer-events: none;
+}
+
+.switch .track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform var(--tr-hover-duration) ease;
+}
+
+.switch input:checked + .track {
+  background: var(--tr-status-ok);
+}
+
+.switch input:checked + .track::after {
+  transform: translateX(16px);
+}
+
+.switch input:disabled + .track {
+  opacity: 0.4;
+}
+
+.hint {
+  margin-left: auto;
+  font-size: var(--tr-fs-label);
+  color: var(--tr-text-muted);
+}
+
+.foot {
+  flex: none;
+  padding: 6px 9px;
+  border-top: var(--tr-divider);
+  font-size: var(--tr-fs-label);
+  color: var(--tr-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.field > span {
+  font-size: var(--tr-fs-small);
+  color: var(--tr-text-soft);
+}
+
+.value {
+  font-size: var(--tr-fs-label);
+  color: var(--tr-text-muted);
+  max-width: 62%;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.tip {
+  margin: 4px 0 0;
+  font-size: var(--tr-fs-label);
+  line-height: 1.6;
+  color: var(--tr-text-muted);
+}
+
+/* ── 关键帧 ─────────────────────────────────────────────────────────── */
+
+@keyframes breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(var(--tr-breathe-scale));
+  }
+}
+
+@keyframes blink {
+  0%,
+  92%,
+  100% {
+    height: var(--tr-eye-height);
+  }
+  95% {
+    height: 3%;
+  }
+}
+
+/* 从球心附近涨到球边缘为止 —— 不能涨出窗口 */
+@keyframes ring-out {
+  0% {
+    opacity: 0.8;
+    transform: scale(var(--tr-ring-from));
+  }
+  100% {
+    opacity: 0;
+    transform: scale(var(--tr-ring-spread));
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-3px);
+  }
+  75% {
+    transform: translateX(3px);
+  }
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+/* 颜色选择器：压成一个小色块，别用浏览器默认那个大方块 */
+.color {
+  width: 34px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.color::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+
+.color::-webkit-color-swatch {
+  border: none;
+  border-radius: 4px;
+}
+
+.range-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 62%;
+}
+
+.range-wrap input[type="range"] {
+  width: 96px;
+  accent-color: var(--tr-status-ok);
+  cursor: pointer;
+}
+/* 提示：不碍事但要说清楚（比如对比度被自动调整过） */
+.tip.warn {
+  color: var(--tr-status-warn);
+}
+/* 面板窗口：整页就是那块面板，不要滚动条 */
+.panel-window {
+  overflow: hidden;
+}
+
+/* ── 面板右下角的改尺寸抓手 ─────────────────────────────────────────── */
+
+/*
+ * 铺在面板右下角的一小块热区。
+ *
+ * 必须显式写 pointer-events: auto —— html/body 是 none，不写就收不到指针事件。
+ * right/bottom 用 32px 对齐到面板本体的右下角（32px 是给投影的留白）。
+ */
+.resize-grip {
+  position: absolute;
+  right: 32px;
+  bottom: 32px;
+  width: 22px;
+  height: 22px;
+  pointer-events: auto;
+  cursor: nwse-resize;
+  /* 三条斜纹当视觉提示，颜色跟随正文色，换主题自动变 */
+  background-image: linear-gradient(
+    135deg,
+    transparent 0 46%,
+    var(--tr-text-muted) 46% 54%,
+    transparent 54% 66%,
+    var(--tr-text-muted) 66% 74%,
+    transparent 74% 86%,
+    var(--tr-text-muted) 86% 94%,
+    transparent 94%
+  );
+  border-bottom-right-radius: var(--tr-panel-radius);
+  opacity: 0.45;
+  transition: opacity 120ms var(--tr-ease-out);
+}
+
+.resize-grip:hover,
+html[data-resizing] .resize-grip {
+  opacity: 0.9;
+}

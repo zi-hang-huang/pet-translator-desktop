@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="zh-CN" data-view="translate">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      面板窗口。和球是两个独立窗口：面板挪走了不会带着球跑，反之亦然。
+      样式和球共用 ball.css（球那部分规则在这里用不到，多几 KB 而已）。
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'self' 'unsafe-inline' file:; script-src 'self' file:; img-src 'self' file: data:; connect-src 'none'"
+    />
+    <title>翻译球 · 面板</title>
+    <link rel="stylesheet" href="../../assets/tokens.css" />
+    <link rel="stylesheet" href="ball.css" />
+  </head>
+  <body class="panel-window">
+    <section class="panel open" id="panel">
+      <!-- ── 翻译视图 ───────────────────────────────────────────────── -->
+      <div class="view" id="view-translate">
+        <header class="head" id="head-translate">
+          <span class="lamp" id="lamp" data-status="off" title="后端状态"></span>
+          <span class="title">翻译</span>
+          <select class="select" id="target-top" title="目标语言"></select>
+          <button class="icon" type="button" data-action="settings" title="设置">⚙</button>
+          <button class="icon" type="button" data-action="close" title="关闭">✕</button>
+        </header>
+
+        <div class="body">
+          <div class="label" id="src-label">原文</div>
+          <div class="src" id="src">在任意程序里选中文字，按 Ctrl+Alt+T 就会直接翻译。</div>
+
+          <div class="label" id="out-label">译文</div>
+          <div class="out" id="out" title="点击复制译文">译文会出现在这里，点它即可复制。</div>
+
+          <textarea
+            class="input"
+            id="draft"
+            rows="3"
+            placeholder="或直接粘贴/输入要翻译的文字，Ctrl+Enter 翻译"
+          ></textarea>
+
+          <div class="actions">
+            <button class="go" type="button" id="go">翻译</button>
+            <span class="hint" id="hint">Ctrl+Enter</span>
+          </div>
+        </div>
+
+        <footer class="foot" id="foot">引擎：占位</footer>
+      </div>
+
+      <!-- ── 设置视图 ───────────────────────────────────────────────── -->
+      <div class="view" id="view-settings" hidden>
+        <header class="head" id="head-settings">
+          <span class="lamp" id="lamp-settings" data-status="off" title="后端状态"></span>
+          <span class="title">设置</span>
+          <button class="icon" type="button" data-action="back" title="返回翻译">←</button>
+          <button class="icon" type="button" data-action="close" title="关闭">✕</button>
+        </header>
+
+        <div class="body">
+          <div class="field">
+            <span>目标语言</span>
+            <select class="select" id="target-settings"></select>
+          </div>
+          <div class="field">
+            <span>球的大小</span>
+            <select class="select" id="scale"></select>
+          </div>
+          <div class="field">
+            <span>取词热键</span>
+            <span class="value" id="hotkey-value">Ctrl+Alt+T</span>
+          </div>
+          <div class="field">
+            <span>翻译引擎</span>
+            <span class="value" id="engine-name">占位</span>
+          </div>
+          <div class="field">
+            <span>后端状态</span>
+            <span class="value" id="engine-detail">未启动</span>
+          </div>
+          <div class="field">
+            <span>开机自启</span>
+            <label class="switch">
+              <input type="checkbox" id="autostart" />
+              <span class="track"></span>
+            </label>
+          </div>
+          <p class="tip" id="autostart-note" hidden></p>
+          <div class="field">
+            <span>关闭硬件加速</span>
+            <label class="switch">
+              <input type="checkbox" id="disable-gpu" />
+              <span class="track"></span>
+            </label>
+          </div>
+          <p class="tip">只有球或面板周围出现黑边时才需要打开，改完重启生效。</p>
+
+          <div class="field">
+            <span>面板颜色</span>
+            <input type="color" id="panel-color" class="color" value="#161a22" title="面板底色" />
+          </div>
+          <div class="field">
+            <span>不透明度</span>
+            <span class="range-wrap">
+              <input type="range" id="panel-opacity" min="55" max="100" step="1" value="100" />
+              <span class="value" id="panel-opacity-value">100%</span>
+            </span>
+          </div>
+          <p class="tip">调低透明度会让底下的内容透上来，看不清就调回去。</p>
+
+          <div class="field">
+            <span>球颜色</span>
+            <input type="color" id="ball-color" class="color" value="#3a8dff" title="球的颜色" />
+          </div>
+          <div class="field">
+            <span>文字颜色</span>
+            <input type="color" id="text-color" class="color" value="#e8ecf4" title="面板正文颜色" />
+          </div>
+          <div class="field">
+            <span>眼睛跟随鼠标</span>
+            <label class="switch">
+              <input type="checkbox" id="eyes-follow" checked />
+              <span class="track"></span>
+            </label>
+          </div>
+
+          <div class="actions">
+            <button class="go" type="button" data-action="login">打开 DeepSeek 窗口</button>
+          </div>
+          <div class="actions">
+            <button class="ghost" type="button" data-action="reset-session">清空翻译会话</button>
+          </div>
+
+          <p class="tip">
+            第一次用要先在那个窗口里登录一次（扫码或手机号），之后登录态一直有效。
+            翻译会写进同一个专用会话，想抹掉就点「清空翻译会话」。
+          </p>
+        </div>
+
+        <footer class="foot">拖标题栏移动面板 · 球是独立窗口，各走各的</footer>
+      </div>
+    </section>
+
+    <!-- 右下角拖拽改尺寸。放在 .panel 外面：面板自己有 overflow:hidden，
+         放里面会被圆角裁掉一截，鼠标够不着。 -->
+    <div class="resize-grip" id="resize-grip" title="拖动调整大小"></div>
+
+    <script src="panel.js"></script>
+  </body>
+</html>
