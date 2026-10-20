@@ -586,10 +586,6 @@ html[data-drag="1"] .ball {
   accent-color: var(--tr-status-ok);
   cursor: pointer;
 }
-/* 提示：不碍事但要说清楚（比如对比度被自动调整过） */
-.tip.warn {
-  color: var(--tr-status-warn);
-}
 /* 面板窗口：整页就是那块面板，不要滚动条 */
 .panel-window {
   overflow: hidden;

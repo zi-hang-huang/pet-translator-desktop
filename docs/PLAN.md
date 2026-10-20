@@ -115,10 +115,12 @@
 
 ```
 pet-translator-desktop/
-├─ PLAN.md                  ← 本文档
-├─ DESIGN.md                ← 视觉规范（从插件提取的真实数值）
+├─ docs/
+│  ├─ PLAN.md               ← 本文档
+│  ├─ DESIGN.md             ← 视觉规范（从插件提取的真实数值）
+│  ├─ ASSETS.md             ← 素材清单与规格
+│  └─ DEVELOPMENT.md        ← 开发命令与环境变量
 ├─ assets/                  ← 本期交付的素材（已完成）
-│  ├─ README.md             素材清单与规格
 │  ├─ tokens.css            设计令牌（颜色/圆角/阴影/动效）
 │  ├─ ball.svg              球体主素材
 │  ├─ ball-states.svg       四态并排（待机/倾听/翻译中/出错）
