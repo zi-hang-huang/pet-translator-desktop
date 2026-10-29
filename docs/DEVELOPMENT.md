@@ -53,6 +53,7 @@ src/preload/   ball.cjs / panel.cjs，两套窄接口
 | `npx electron scripts/probe-deepseek.cjs --visible --wait-login` | 打开网页窗口等人登录，登录后自动探结构 |
 | `npx electron scripts/probe-pickup.cjs` | 只跑取词、不开球窗口，把「取词坏了」和「窗口焦点问题」分开 |
 | `powershell -ExecutionPolicy Bypass -File scripts/e2e-pickup.ps1` | 端到端取词自测：记事本全选 → 程序取词 → 翻译 |
+| `$env:F="1.5"; npx electron scripts/probe-drag-dpi.cjs` | DPI 回归探针：连续 20 次拖动后，球与面板的宽高必须零漂移 |
 
 `probe-deepseek.cjs` 里有 `app.setPath("userData", …\pet-translator-desktop)`，
 目的是和 App 共用 `persist:deepseek` 分区，否则它看到的是一套没登录的新页面。
@@ -126,6 +127,17 @@ Get-Process 翻译球 -ErrorAction SilentlyContinue
 
 **不要用真实账号压测。** 连续几十次请求会触发服务端限流，冷却一百秒左右才恢复，
 排查期间很容易把限流当成 bug。
+
+**移动窗口只能用 `setBounds`，不能只用 `setPosition`。** 窗口宽 138 DIP 时，
+200% 缩放是 276 物理像素、整除，看不出问题；125% 是 172.5，那半个像素被进位，
+于是每调用一次 `setPosition`，Windows 就把窗口矩形重新算大 1 DIP。拖动是按帧调用的，
+表现就是「按住鼠标球一直变大，松手就停」。`setBounds` 每次都带上 `width` / `height`，
+能把被撑大的尺寸拉回请求值。回归探针：`scripts/probe-drag-dpi.cjs`，
+用 `$env:F` 指定缩放因子跑，连续 20 次拖动后球与面板的宽度都必须零漂移。
+
+**不要 `getPosition()` 读回来当输入。** 非整数缩放下系统回报的位置和请求值能差 1 DIP，
+一旦回流就会被下一次拖动继承，越拖越偏。球和面板都各自记着 `state.origin`
+（最后一次要求的位置），拖动拿它当原点，落盘也用它。
 
 ## 日志
 

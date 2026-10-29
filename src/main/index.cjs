@@ -485,6 +485,14 @@ if (!app.requestSingleInstanceLock()) {
     forwardRendererLogs();
     tray.create();
     wireIpc();
+
+    // 改显示缩放 / 换分辨率 / 插拔屏幕：DIP 坐标在新缩放下的物理位置会变，
+    // 不重算的话球会跑到屏幕外或者贴在边上回不来。
+    screen.on("display-metrics-changed", () => {
+      ball.relayout();
+      panel.reclamp();
+      console.log("[pet-tr] display metrics changed; layout reapplied");
+    });
     console.log(`[pet-tr] ball at ${JSON.stringify(ball.snapshot().circle)}`);
 
     // 状态灯每 8 秒对一次：网页后端会自己掉登录，不能只在动作时才更新

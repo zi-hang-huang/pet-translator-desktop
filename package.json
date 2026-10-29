@@ -1,7 +1,7 @@
 {
   "name": "pet-translator-desktop",
   "productName": "翻译球",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "翻译球 · 桌面独立版 —— 浮在任意窗口之上的翻译球，形象取自 DSH 插件，翻译走 DeepSeek 网页版",
   "main": "src/main/index.cjs",

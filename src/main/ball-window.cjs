@@ -68,6 +68,8 @@ const state = {
   window: undefined,
   /** 球圆的屏幕坐标（左上角）。一切几何的真值。 */
   circle: { x: 0, y: 0 },
+  /** 窗口最后被要求放在哪。拖动拿它当原点，不读 getPosition()。 */
+  origin: { x: 0, y: 0 },
   scale: 1,
   pinned: true,
   /** @type {{originX: number, originY: number, fromX: number, fromY: number} | null} */
@@ -100,6 +102,7 @@ function relayout() {
 
   const layout = collapsedLayout(state.circle, size, pad);
   window.setBounds(layout.window);
+  state.origin = { x: layout.window.x, y: layout.window.y };
 
   // 窗口被夹回工作区时球实际动了：把真值同步回去
   state.circle = {
@@ -225,12 +228,19 @@ function applyScale(next, options = {}) {
 function dragStart(screenX, screenY) {
   const window = state.window;
   if (window === undefined || window.isDestroyed()) return;
-  const [x, y] = window.getPosition();
-  state.drag = { originX: x, originY: y, fromX: screenX, fromY: screenY };
+  // 用「上次要求的位置」，不读 getPosition()：非整数缩放下系统回报的位置
+  // 和请求值能差 1 DIP，一旦回流就会被下一次拖动继承，越拖越偏。
+  const origin = state.origin;
+  state.drag = { originX: origin.x, originY: origin.y, fromX: screenX, fromY: screenY };
 }
 
 /**
  * 拖动中。
+ *
+ * **必须用 setBounds 连尺寸一起给，不能用 setPosition。** 只改位置时，
+ * 非整数缩放下 Windows 每次都要按 DPI 重算窗口矩形，宽度会比上次多 1 DIP；
+ * 拖动是按帧调用的，于是表现成「按住鼠标球就一直变大」。
+ *
  * @param {number} screenX @param {number} screenY
  */
 function dragMove(screenX, screenY) {
@@ -238,16 +248,24 @@ function dragMove(screenX, screenY) {
   const drag = state.drag;
   if (window === undefined || window.isDestroyed() || drag === null) return;
 
+  const size = currentBallSize();
   const pad = padding(state.scale);
   const target = clampCircle(
     {
       x: drag.originX + Math.round(screenX - drag.fromX) + pad,
       y: drag.originY + Math.round(screenY - drag.fromY) + pad,
     },
-    currentBallSize(),
+    size,
   );
   state.circle = target.circle;
-  window.setPosition(target.circle.x - pad, target.circle.y - pad);
+  const side = size + pad * 2;
+  state.origin = { x: target.circle.x - pad, y: target.circle.y - pad };
+  window.setBounds({
+    x: state.origin.x,
+    y: state.origin.y,
+    width: side,
+    height: side,
+  });
 }
 
 /** 拖动结束：落盘。 */

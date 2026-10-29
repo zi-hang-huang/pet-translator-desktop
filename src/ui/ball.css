@@ -42,6 +42,12 @@ body {
 .ball {
   position: absolute;
   inset: var(--ball-pad, 21px);
+  /* 球身的尺寸由 --ball-size 给定，不再靠 inset 撑满窗口剩余空间。
+     窗口在非整数缩放下可能比请求值大 1 DIP，跟着窗口走球就会胖一圈；
+     这里定死尺寸 + margin:auto 居中，窗口偏一点球也不变。 */
+  width: var(--ball-size, 96px);
+  height: var(--ball-size, 96px);
+  margin: auto;
   padding: 0;
   border: 0;
   border-radius: 50%;

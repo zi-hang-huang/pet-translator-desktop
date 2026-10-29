@@ -60,6 +60,8 @@ const state = {
   visible: false,
   /** 当前面板本体尺寸（CSS px）。create() 时从 store 读，之后由 resize 改。 */
   size: { width: PANEL_WIDTH, height: PANEL_HEIGHT },
+  /** 窗口最后被要求放在哪。拖动/落点都拿它当原点，不读 getPosition()。 */
+  origin: { x: 0, y: 0 },
   /** @type {{originX: number, originY: number, fromX: number, fromY: number} | null} */
   drag: null,
   ignoring: false,
@@ -168,6 +170,7 @@ function create() {
   });
 
   state.window = window;
+  state.origin = { x: position.x, y: position.y };
   return window;
 }
 
@@ -193,7 +196,14 @@ function placeBesideBall(ballCircle, ballSize) {
     gap: GAP,
     margin: MARGIN,
   });
-  window.setPosition(placement.x, placement.y);
+  // 连尺寸一起给：只改位置在非整数缩放下会让窗口每帧涨 1 DIP（见 dragMove 注释）
+  state.origin = { x: placement.x, y: placement.y };
+  window.setBounds({
+    x: placement.x,
+    y: placement.y,
+    width: size.width,
+    height: size.height,
+  });
   store.write({ panelX: placement.x, panelY: placement.y });
 }
 
@@ -232,12 +242,17 @@ function isVisible() {
 function dragStart(screenX, screenY) {
   const window = state.window;
   if (window === undefined || window.isDestroyed()) return;
-  const [x, y] = window.getPosition();
-  state.drag = { originX: x, originY: y, fromX: screenX, fromY: screenY };
+  const origin = state.origin;
+  state.drag = { originX: origin.x, originY: origin.y, fromX: screenX, fromY: screenY };
 }
 
 /**
  * 拖动中：窗口位置 = 原点 + 指针位移，夹进工作区。
+ *
+ * **必须用 setBounds 连尺寸一起给，不能用 setPosition。** 只改位置时，
+ * 非整数缩放下 Windows 每次都要按 DPI 重算窗口矩形，宽高会比上次多 1 DIP，
+ * 表现成「按住拖面板，它自己越来越大」。
+ *
  * @param {number} screenX @param {number} screenY
  */
 function dragMove(screenX, screenY) {
@@ -259,7 +274,8 @@ function dragMove(screenX, screenY) {
     }).workArea,
     MARGIN,
   );
-  window.setPosition(position.x, position.y);
+  state.origin = position;
+  window.setBounds({ x: position.x, y: position.y, width: size.width, height: size.height });
 }
 
 /** 拖动结束：落盘。 */
@@ -267,8 +283,7 @@ function dragEnd() {
   state.drag = null;
   const window = state.window;
   if (window === undefined || window.isDestroyed()) return;
-  const [x, y] = window.getPosition();
-  store.write({ panelX: x, panelY: y });
+  store.write({ panelX: state.origin.x, panelY: state.origin.y });
 }
 
 /**
@@ -291,7 +306,8 @@ function resize(width, height, options = {}) {
   const window = state.window;
   if (window === undefined || window.isDestroyed()) return bodySize();
 
-  const [x, y] = window.getPosition();
+  const x = state.origin.x;
+  const y = state.origin.y;
   const workArea = screen.getDisplayNearestPoint({
     x: x + MARGIN + state.size.width / 2,
     y: y + MARGIN + state.size.height / 2,
@@ -318,6 +334,7 @@ function resize(width, height, options = {}) {
   const maxWinBottom = workArea.y + workArea.height - GRIP_CLEARANCE + MARGIN;
   const nextX = Math.max(workArea.x - MARGIN, Math.min(x, maxWinRight - size.width));
   const nextY = Math.max(workArea.y - MARGIN, Math.min(y, maxWinBottom - size.height));
+  state.origin = { x: nextX, y: nextY };
   window.setBounds({ x: nextX, y: nextY, width: size.width, height: size.height });
 
   if (options.persist !== false) {
@@ -363,6 +380,28 @@ function destroy() {
   state.visible = false;
 }
 
+/**
+ * 显示设置变了（改缩放、换分辨率、插拔屏幕）：按新工作区重新夹一次。
+ *
+ * 缩放一变，原来的 DIP 坐标在新缩放下的物理位置就变了，不重算会留在屏幕外。
+ */
+function reclamp() {
+  const window = state.window;
+  if (window === undefined || window.isDestroyed()) return;
+  const size = windowSize();
+  const position = clampPanelWindow(
+    state.origin,
+    bodySize(),
+    screen.getDisplayNearestPoint({
+      x: state.origin.x + MARGIN + state.size.width / 2,
+      y: state.origin.y + MARGIN + state.size.height / 2,
+    }).workArea,
+    MARGIN,
+  );
+  state.origin = position;
+  window.setBounds({ x: position.x, y: position.y, width: size.width, height: size.height });
+}
+
 /** @returns {object} 日志 / 自测用。 */
 function snapshot() {
   const window = state.window;
@@ -393,6 +432,7 @@ module.exports = {
   dragMove,
   dragEnd,
   resize,
+  reclamp,
   normalizePanelSize,
   setPassThrough,
   applyPinned,
