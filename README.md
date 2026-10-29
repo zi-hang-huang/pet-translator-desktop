@@ -1,4 +1,4 @@
-﻿# 翻译球
+# 翻译球
 
 Windows 上的划词翻译工具。选中文字按 `Ctrl+Alt+T`，译文出现在鼠标旁边的浮球面板里，不用切换窗口。
 
@@ -6,7 +6,7 @@ Windows 上的划词翻译工具。选中文字按 `Ctrl+Alt+T`，译文出现�
 
 ## 下载
 
-**[下载翻译球 v0.1.0](https://github.com/zi-hang-huang/pet-translator-desktop/releases/download/v0.1.0/pet-translator-v0.1.0-win64.zip)** · Windows 64 位 · 139.8 MB
+**[下载翻译球 v0.1.1](https://github.com/zi-hang-huang/pet-translator-desktop/releases/download/v0.1.1/pet-translator-v0.1.1-win64.zip)** · Windows 64 位 · 139.8 MB
 
 1. 解压到任意目录
 2. 双击 `翻译球.exe`
