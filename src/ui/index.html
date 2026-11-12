@@ -19,7 +19,21 @@
     <div class="stage" id="stage">
       <button id="ball" class="ball" type="button" title="单击翻译选中的文字 · 拖动移动 · 右键菜单">
         <span class="ring"></span>
-        <span class="eyes"><span class="eye l"></span><span class="eye r"></span></span>
+        <!-- 两层分工：.orbit 管表情动作（绕圈/缩放），.eye 管跟着鼠标的光标位移。
+             两件事都写 transform 的话会互相覆盖 —— 表情一放，眼睛就会抽搐。 -->
+        <span class="eyes">
+          <span class="orbit" id="orbit">
+            <span class="eye l"></span><span class="eye r"></span>
+          </span>
+        </span>
+        <!-- 五官的曲线部分（嘴 + 笑脸的弯眼）都画在这一层：
+             viewBox 跟球同心，坐标是球径百分比，线宽用 non-scaling-stroke 锁屏幕像素，
+             所以 58px 的小球上也是清楚的细线，不会糊成脏点。 -->
+        <svg class="mouth" id="mouth" viewBox="0 0 100 100" aria-hidden="true">
+          <path class="happy-eye" id="eye-happy-l" d="M 26 46 Q 32 39 38 46"></path>
+          <path class="happy-eye" id="eye-happy-r" d="M 62 46 Q 68 39 74 46"></path>
+          <path id="mouth-path" d="M 43 74 Q 50 75 57 74"></path>
+        </svg>
       </button>
     </div>
     <script src="ball.js"></script>

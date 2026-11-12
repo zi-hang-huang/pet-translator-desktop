@@ -19,6 +19,9 @@ contextBridge.exposeInMainWorld("petBall", {
   /** @returns {Promise<object>} 启动事实：尺寸、颜色、眼睛开关。 */
   info: () => ipcRenderer.invoke("ball:info"),
 
+  /** 预览模式（启动器里设 PET_TR_GESTURE_DEMO=1）：把待命小动作连着播一遍，不用等随机间隔。 */
+  gestureDemo: process.env.PET_TR_GESTURE_DEMO === "1",
+
   /* —— 拖动 —— */
   /** @param {{x: number, y: number}} point */
   dragStart: (point) => ipcRenderer.send("ball:drag-start", point),

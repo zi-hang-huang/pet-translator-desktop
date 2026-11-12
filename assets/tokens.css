@@ -50,10 +50,10 @@
   --tr-eye-color-error: #7a1d1d;   /* 出错态 */
   --tr-eye-width: 15.4%;           /* 8/52 */
   --tr-eye-height: 17.3%;          /* 9/52 */
-  --tr-eye-top: 38%;
-  --tr-eye-left: 30%;
-  --tr-eye-right: 58%;
-  --tr-eye-height-busy: 3.8%;      /* 2/52，翻译中眯成一条缝 */
+  --tr-eye-top: 36%;
+  --tr-eye-left: 24%;
+  --tr-eye-right: 60.6%;
+  --tr-eye-height-busy: 8.5%;      /* 翻译中转圈的小圆眼（太大了像瞪人，太小了看不出在转） */
 
   /* ── 面板 ─────────────────────────────────────────────────────────── */
   --tr-panel-width: 340px;
@@ -123,7 +123,7 @@
   --tr-breathe-duration: 4.2s;     /* 呼吸 */
   --tr-breathe-scale: 1.045;
   --tr-blink-duration: 5.6s;       /* 眨眼 */
-  --tr-spin-duration: 1.1s;        /* 翻译中转圈 */
+  --tr-spin-duration: 0.9s;        /* 翻译中眼睛转一圈的时间 */
   --tr-pulse-duration: 520ms;      /* 倾听光环（ring 元素，一次） */
   --tr-ring-from: 0.62;            /* 光环起点 scale：从球心附近长出来 */
   --tr-ring-spread: 1;             /* 终点 = 球边缘。见 DESIGN §1：透明窗口画不到窗外 */

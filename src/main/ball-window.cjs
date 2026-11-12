@@ -285,7 +285,7 @@ function setPassThrough(ignore) {
   window.setIgnoreMouseEvents(ignore, { forward: true });
 }
 
-/** @param {"idle" | "listening" | "busy" | "error"} next */
+/** @param {"idle" | "listening" | "busy" | "done" | "error"} next */
 function setState(next) {
   state.ballState = next;
   const window = state.window;
@@ -300,6 +300,7 @@ function pushLook() {
   window.webContents.send("ball:look", {
     ballColor: saved.ballColor,
     eyesFollow: saved.eyesFollow === true,
+    idleGestures: saved.idleGestures === true,
   });
 }
 

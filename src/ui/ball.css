@@ -88,6 +88,14 @@ body {
   inset: 0;
 }
 
+/* 表情层：绕圈、放大、抖动都写在这一层。
+   .eye 自己的 transform 留给「跟随光标」，两者互不覆盖。 */
+.orbit {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 50%;
+}
+
 .eye {
   position: absolute;
   top: var(--tr-eye-top);
@@ -97,7 +105,7 @@ body {
   background: var(--tr-eye-color);
   animation: blink var(--tr-blink-duration) infinite;
   /* 跟随鼠标时的位移。120ms 是"跟得上但不抖"的折中 */
-  transition: transform 120ms ease-out;
+  transition: transform 120ms ease-out, opacity 120ms linear, height 160ms ease-out;
   will-change: transform;
 }
 
@@ -120,6 +128,30 @@ body {
   pointer-events: none;
 }
 
+/* 嘴：贴在球面上的细弧。坐标和线宽都用 viewBox 的用户单位，
+   球缩放时嘴跟着等比缩，不需要 JS 换算任何像素。 */
+.mouth {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.mouth path {
+  fill: none;
+  stroke: var(--tr-eye-color);
+  /* 线宽锁定屏幕像素（non-scaling-stroke）：球缩到 58px 时嘴的线还是 2px 左右，
+     不会跟着 viewBox 一起缩成 1.5px 的虚边。 */
+  stroke-width: 2.2px;
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: round;
+  /* Chromium 里 d 可以过渡（顶点数相同就能平滑变形）；
+     不支持的版本会瞬间换形，也不会坏 */
+  transition: d var(--tr-hover-duration) var(--tr-ease-out);
+}
+
 /* ── 球的状态 ───────────────────────────────────────────────────────── */
 
 html[data-state="listening"] .ring {
@@ -139,22 +171,140 @@ html[data-state="listening"] .ball {
   box-shadow: var(--ball-shadow-strong);
 }
 
-html[data-state="busy"] .ball {
-  animation: spin var(--tr-spin-duration) linear infinite;
+/* 翻译中：两只眼睛各变成一个"加载中"的缺口圆环，绕自己的圆心转。
+   做法就是最常见的 CSS spinner —— 画一个正圆，把左边那条边的颜色设为透明，
+   留出 90° 缺口，再整圈旋转；缺口在转，环就活了。
+   不用"圆点绕小圈"是因为小半径下那更像发抖，不像在加载。 */
+html[data-state="busy"] .eye {
+  top: 43%;
+  width: calc(var(--ball-size, 96px) * 0.17);
+  height: calc(var(--ball-size, 96px) * 0.17);
+  box-sizing: border-box;
+  background: transparent;
+  border: calc(var(--ball-size, 96px) * 0.028) solid var(--tr-eye-color);
+  border-left-color: transparent;
+  animation: eye-spin var(--tr-spin-duration) linear infinite;
 }
 
-html[data-state="busy"] .eye {
-  top: 52%;
-  height: var(--tr-eye-height-busy);
-  animation: none;
+/* 两只眼反着转：同向会像一对同步的齿轮，反向才像"两边都在转、但谁也转不明白" */
+html[data-state="busy"] .eye.l {
+  animation-direction: reverse;
 }
 
 html[data-state="error"] .ball {
   animation: shake 320ms ease-in-out 2;
 }
 
+/* 出错：眼睛变成两个叉。眼睛自己清空底色，再用两条 ::before/::after 斜杠拼 X，
+   X 的线宽跟着球直径算，缩到 58px 也是细线不是一团。 */
 html[data-state="error"] .eye {
+  background: transparent;
+  border-radius: 0;
+  animation: none;
+}
+
+html[data-state="error"] .eye::before,
+html[data-state="error"] .eye::after {
+  content: "";
+  position: absolute;
+  /* 斜杠只占眼宽的 64%：占满的话两条 45° 线会伸出眼眶，
+     左右两个 X 在眼睛间距只有 12% 球径时会连成一片。 */
+  left: 18%;
+  right: 18%;
+  top: 50%;
+  height: calc(var(--ball-size, 96px) * 0.022);
+  margin-top: calc(var(--ball-size, 96px) * -0.011);
+  border-radius: 999px;
   background: var(--tr-eye-color-error);
+}
+
+html[data-state="error"] .eye::before {
+  transform: rotate(45deg);
+}
+
+html[data-state="error"] .eye::after {
+  transform: rotate(-45deg);
+}
+
+/* 翻完了：眼睛弯成 ∩ ∩，球弹一下。
+   弯眼画在 SVG 层里（跟嘴同一张图），不再给眼框加上边框 ——
+   因为 58px 的球上眼框只有 9px 宽，上边框的弧高不到 1px，等于一条直线，
+   笑脸就没了。SVG 的弧线配 non-scaling-stroke，什么尺寸都是清楚的弯。 */
+html[data-state="done"] .ball {
+  animation:
+    pop 420ms var(--tr-ease-out) 1,
+    breathe var(--tr-breathe-duration) var(--tr-ease-in-out) 420ms infinite;
+}
+
+html[data-state="done"] .eye {
+  opacity: 0;
+  animation: none;
+}
+
+/* 选择器要写到和下面那条默认隐藏规则一样的具体度（都在 .mouth path 上），
+   否则同权重时后面的 opacity:0 会把笑脸的弯眼压回隐藏 —— 只剩嘴在笑。 */
+html[data-state="done"] .mouth path.happy-eye {
+  opacity: 1;
+}
+
+/* 弯眼：平时藏起来（用 opacity 而不是 display:none，淡入淡出才不跳） */
+.mouth path.happy-eye {
+  stroke-width: 2.4px;
+  opacity: 0;
+  transition: opacity var(--tr-hover-duration) var(--tr-ease-out);
+}
+
+/* 小尺寸再粗一档：58px 上 2.4px 的线偏细，笑脸容易被球的高光吃掉。
+   弯眼那条规则的具体度更高，所以要跟着写一遍。 */
+html[data-size="s"] .mouth path,
+html[data-size="s"] .mouth path.happy-eye {
+  stroke-width: 2.8px;
+}
+
+/* ── 待命小动作 ─────────────────────────────────────────────────────── */
+/* 动作全部写在 .orbit 上：.eye 的 transform 是跟随光标专用的，
+   两个都写 transform 会互相覆盖。所以"脸在动"归 .orbit，"眼珠在看谁"归 .eye。 */
+
+html[data-gesture="blink"] .eye {
+  animation: none;
+  height: 3.5%;
+}
+
+html[data-gesture="look"] .orbit {
+  animation: look-around 1.7s var(--tr-ease-in-out) 1;
+}
+
+html[data-gesture="curious"] .orbit {
+  animation: head-tilt 1.3s var(--tr-ease-in-out) 1;
+}
+
+html[data-gesture="giggle"] .orbit {
+  animation: giggle-bounce 950ms var(--tr-ease-in-out) 1;
+}
+
+/* 偷笑：眼睛换成笑脸的弯眼（跟"翻完了"共用同一对 SVG 弧线），嘴由 JS 改 */
+html[data-gesture="giggle"] .eye {
+  opacity: 0;
+}
+
+html[data-gesture="giggle"] .mouth path.happy-eye {
+  opacity: 1;
+}
+
+html[data-gesture="yawn"] .orbit {
+  animation: yawn-sway 1.9s var(--tr-ease-in-out) 1;
+}
+
+/* 打哈欠/睡着：眼睛闭成两条线，嘴由 JS 给（哈欠张大、睡着抿平） */
+html[data-gesture="yawn"] .eye,
+html[data-gesture="sleep"] .eye {
+  animation: none;
+  height: 3.5%;
+}
+
+/* 睡着了呼吸放慢，别的都不动 */
+html[data-gesture="sleep"] .ball {
+  animation-duration: 7s;
 }
 
 /* 拖拽时停掉呼吸：球在手里还一胀一缩会很怪 */
@@ -458,14 +608,61 @@ html[data-drag="1"] .ball {
 }
 
 .foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex: none;
-  padding: 6px 9px;
+  padding: 5px 9px;
   border-top: var(--tr-divider);
   font-size: var(--tr-fs-label);
   color: var(--tr-text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 引擎状态那一行：占满剩下的宽度，太长就省略 */
+.foot-note {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 翻译模式（划词 / 粘贴）───────────────────────────────────────── */
+
+.mode {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--tr-radius-sm);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.mode-btn {
+  padding: 1px 8px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--tr-text-muted);
+  font: inherit;
+  font-size: var(--tr-fs-label);
+  line-height: 1.6;
+  cursor: pointer;
+  transition:
+    background var(--tr-hover-duration) ease,
+    color var(--tr-hover-duration) ease;
+}
+
+.mode-btn:hover {
+  color: var(--tr-text-soft);
+}
+
+.mode-btn[aria-selected="true"] {
+  background: var(--tr-chip-bg);
+  color: var(--tr-chip-color);
 }
 
 .field {
@@ -496,6 +693,58 @@ html[data-drag="1"] .ball {
   color: var(--tr-text-muted);
 }
 
+/* ── 翻译视图的纵向布局 ─────────────────────────────────────────────── */
+/*
+ * 译文块吃掉剩余高度：窗口拖高，译文跟着变高，不用滚轮翻。
+ * 原文块相反 —— 高度由内容决定、上限 118px，窗口怎么拖它都不变（只随宽度换行）。
+ *
+ * 必须显式盖掉上面 .src/.out 的 max-height：那条规则把两块都钉死在 118px，
+ * 窗口拖高只会让 .body 多出一截滚动区域，看起来就是「译文只有横向在变」。
+ */
+#view-translate .body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#view-translate .label {
+  flex: none;
+}
+
+#view-translate .src {
+  flex: 0 1 auto;
+  min-height: 0;
+}
+
+#view-translate .out {
+  flex: 1 1 auto;
+  min-height: 52px;
+  max-height: none;
+}
+
+#view-translate .input {
+  flex: 0 1 auto;
+  min-height: 46px;
+}
+
+#view-translate .actions {
+  flex: none;
+}
+
+/* 划词模式：不要粘贴框、「翻译」按钮和那行提示 —— 提示改由底栏代播（见 panel.js），
+   少一行就多一行译文 */
+html[data-mode="pick"] #view-translate #draft,
+html[data-mode="pick"] #view-translate #go,
+html[data-mode="pick"] #view-translate .actions {
+  display: none;
+}
+
+/* 粘贴模式：输入框本身就是原文，不另外显示原文窗口 */
+html[data-mode="paste"] #src-label,
+html[data-mode="paste"] #src {
+  display: none;
+}
+
 /* ── 关键帧 ─────────────────────────────────────────────────────────── */
 
 @keyframes breathe {
@@ -519,6 +768,58 @@ html[data-drag="1"] .ball {
   }
 }
 
+/* 东张西望：脸先往左偏一点、再往右偏，最后回正 */
+@keyframes look-around {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  22% {
+    transform: translateX(-11%);
+  }
+  58% {
+    transform: translateX(9%);
+  }
+  80% {
+    transform: translateX(-4%);
+  }
+}
+
+/* 好奇：歪头看一会儿 */
+@keyframes head-tilt {
+  0%,
+  100% {
+    transform: rotate(0deg) translateY(0) scale(1);
+  }
+  28%,
+  74% {
+    transform: rotate(-7deg) translateY(-3%) scale(1.03);
+  }
+}
+
+/* 偷笑：脸轻轻弹一下（球体的呼吸动画在 .ball 上，别抢它的 transform） */
+@keyframes giggle-bounce {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.07);
+  }
+}
+
+/* 打哈欠：脑袋往后仰一下、慢慢回来 */
+@keyframes yawn-sway {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  35%,
+  72% {
+    transform: translateY(-3%) scale(1.05);
+  }
+}
+
 /* 从球心附近涨到球边缘为止 —— 不能涨出窗口 */
 @keyframes ring-out {
   0% {
@@ -531,9 +832,26 @@ html[data-drag="1"] .ball {
   }
 }
 
-@keyframes spin {
+/* 整个圆环绕自己的圆心转一圈。缺口的位置随之在转，就是加载动画那个感觉。 */
+@keyframes eye-spin {
+  from {
+    transform: rotate(0deg);
+  }
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* 完成时轻轻弹一下：只放大一点点，大了像在跳迪斯科 */
+@keyframes pop {
+  0% {
+    transform: scale(1);
+  }
+  38% {
+    transform: scale(1.06);
+  }
+  100% {
+    transform: scale(1);
   }
 }
 
@@ -591,6 +909,57 @@ html[data-drag="1"] .ball {
   width: 96px;
   accent-color: var(--tr-status-ok);
   cursor: pointer;
+}
+
+/* ── 译文字号 ───────────────────────────────────────────────────────── */
+
+/*
+ * 译文单独一档字号（--tr-out-font 由 panel.js 按设置写上去）。
+ * 原文块不跟：两段文字一样大反而分不清哪块是自己刚选的内容。
+ */
+.out {
+  font-size: var(--tr-out-font, var(--tr-fs-small));
+}
+
+/* ── 配色预设 ───────────────────────────────────────────────────────── */
+
+/* 一行放不下时自动换行：面板最窄会被拖到 260px */
+.field-col {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.presets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
+  gap: 6px;
+}
+
+/* 每个色板自己就是预览：底色 = 面板色，文字 = 正文色 */
+.preset {
+  height: 26px;
+  padding: 0 4px;
+  border-radius: 6px;
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  font: inherit;
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  transition: transform var(--tr-hover-duration) ease;
+}
+
+.preset:hover {
+  transform: translateY(-1px);
+}
+
+/* 选中态用描边而不是换底色 —— 底色是色板本身的信息，不能盖掉 */
+.preset[aria-pressed="true"] {
+  border-color: var(--tr-status-ok);
+  box-shadow: 0 0 0 1px var(--tr-status-ok);
 }
 /* 面板窗口：整页就是那块面板，不要滚动条 */
 .panel-window {

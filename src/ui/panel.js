@@ -24,7 +24,8 @@ const srcLabel = document.getElementById("src-label");
 const outLabel = document.getElementById("out-label");
 const draftEl = document.getElementById("draft");
 const goEl = document.getElementById("go");
-const footEl = document.getElementById("foot");
+const footNoteEl = document.getElementById("foot-note");
+const modeButtons = /** @type {HTMLButtonElement[]} */ ([...document.querySelectorAll(".mode-btn")]);
 const hintEl = document.getElementById("hint");
 const lampEl = document.getElementById("lamp");
 const lampSettingsEl = document.getElementById("lamp-settings");
@@ -39,7 +40,11 @@ const panelOpacityEl = document.getElementById("panel-opacity");
 const panelOpacityValueEl = document.getElementById("panel-opacity-value");
 const ballColorEl = document.getElementById("ball-color");
 const textColorEl = document.getElementById("text-color");
+const outFontEl = document.getElementById("out-font");
+const outFontValueEl = document.getElementById("out-font-value");
+const presetsEl = document.getElementById("presets");
 const eyesFollowEl = document.getElementById("eyes-follow");
+const idleGesturesEl = document.getElementById("idle-gestures");
 
 const targetTopEl = document.getElementById("target-top");
 const targetSettingsEl = document.getElementById("target-settings");
@@ -48,6 +53,14 @@ const resizeGripEl = document.getElementById("resize-grip");
 
 /** 提示文字的停留时长。 */
 const HINT_MS = 1400;
+
+/**
+ * 翻译模式的存储键。
+ *
+ * 存 localStorage 就够了：它纯粹是面板自己的显示偏好，主进程不需要知道
+ * （位置、尺寸那些才进 settings.json）。取不到就退回默认值，不影响功能。
+ */
+const MODE_KEY = "pet-panel-mode";
 
 /** 拖动位移小于这个值就算「点击」，不算拖。 */
 const DRAG_THRESHOLD = 4;
@@ -71,6 +84,8 @@ const BLACK = [0, 0, 0];
 
 const state = {
   view: "translate",
+  /** 翻译模式：pick = 划词（只显示原文/译文），paste = 粘贴（只显示输入框/译文）。 */
+  mode: /** @type {"pick" | "paste"} */ ("pick"),
   target: "auto",
   targets: [],
   source: "",
@@ -90,7 +105,11 @@ const state = {
   panelOpacity: 100,
   ballColor: "#3a8dff",
   textColor: "#e8ecf4",
+  /** 译文字号（px）。只影响译文块，原文块保持小一号。 */
+  outFontSize: 12,
   eyesFollow: true,
+  /** 待命时球自己玩（眨眼/张望/偷笑/打哈欠/睡着）。 */
+  idleGestures: true,
   ignoring: false,
   lastPassCheck: 0,
   drag: /** @type {{fromX: number, fromY: number, moved: boolean} | null} */ (null),
@@ -206,6 +225,96 @@ function applyTextLook() {
   root.style.setProperty("--tr-src-color", rgbToHex(mix(base, background, 0.35)));
 }
 
+/* ── 字号 ─────────────────────────────────────────────────────────────── */
+
+/**
+ * 应用译文字号。
+ *
+ * 只写一个 CSS 变量 `--tr-out-font`，`.out` 那条规则用它。为什么不放大原文：
+ * 两段一样大就分不清哪段是自己刚选的内容，原文留小一号当「出处」看更清楚。
+ * @param {number} size
+ */
+function applyOutFont(size) {
+  const raw = Number(size);
+  const value = Number.isFinite(raw) ? Math.min(28, Math.max(10, Math.round(raw))) : 12;
+  state.outFontSize = value;
+  root.style.setProperty("--tr-out-font", `${value}px`);
+  outFontEl.value = String(value);
+  outFontValueEl.textContent = `${value}px`;
+}
+
+/* ── 配色预设 ─────────────────────────────────────────────────────────── */
+
+/**
+ * 预设的配色组合。
+ *
+ * 每个预设同时定「面板底色 + 正文颜色 + 球颜色」——只换底色是最容易出事的改法：
+ * 深色字压在深色底上直接看不见。三色成组才能保证任何预设都读得清。
+ * 块与块的明暗关系由 applySurfaces() 负责（深底提亮、浅底压暗），这里只管给对颜色。
+ */
+const THEMES = [
+  { id: "night", name: "午夜", panelColor: "#161a22", textColor: "#e8ecf4", ballColor: "#3a8dff" },
+  { id: "ink", name: "墨黑", panelColor: "#0b0d12", textColor: "#cfd6e4", ballColor: "#4c9bff" },
+  { id: "deep", name: "深海", panelColor: "#0f2233", textColor: "#d6e7f5", ballColor: "#2f9fd0" },
+  { id: "paper", name: "纸白", panelColor: "#f7f5ef", textColor: "#2a2a2e", ballColor: "#c98b3e" },
+  { id: "cream", name: "米黄", panelColor: "#f3ecd8", textColor: "#33302a", ballColor: "#a8762f" },
+  { id: "lemon", name: "柠檬", panelColor: "#fcffeb", textColor: "#0040ff", ballColor: "#08dbf7" },
+  { id: "mint", name: "薄荷", panelColor: "#e8f6ee", textColor: "#1d3a2f", ballColor: "#22b07d" },
+  { id: "sky", name: "天空", panelColor: "#eaf1fb", textColor: "#1e2a3a", ballColor: "#3a8dff" },
+  { id: "sakura", name: "樱粉", panelColor: "#fdeef3", textColor: "#4a2433", ballColor: "#ff86a8" },
+];
+
+/** @returns {string} 当前三个颜色正好等于哪个预设，没有就空串。 */
+function activeThemeId() {
+  const same = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
+  const theme = THEMES.find(
+    (item) =>
+      same(item.panelColor, state.panelColor) &&
+      same(item.textColor, state.textColor) &&
+      same(item.ballColor, state.ballColor),
+  );
+  return theme === undefined ? "" : theme.id;
+}
+
+/** 建色板：每个按钮自己就是预览（底色 = 面板色，文字 = 正文色）。 */
+function buildPresets() {
+  presetsEl.replaceChildren(
+    ...THEMES.map((theme) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "preset";
+      button.dataset.preset = theme.id;
+      button.title = `${theme.name} · ${theme.panelColor} / ${theme.textColor} / ${theme.ballColor}`;
+      button.textContent = theme.name;
+      button.style.background = theme.panelColor;
+      button.style.color = theme.textColor;
+      button.addEventListener("click", () => {
+        void applyTheme(theme);
+      });
+      return button;
+    }),
+  );
+}
+
+/**
+ * 套用预设。
+ *
+ * 三个颜色分别走已有的两个设置通道（面板底色 / 球色 + 正文色），所以预设本身
+ * 不单独存：改完颜色选择器里的值就是当前配色，手调也能即时取消某预设的高亮。
+ * @param {(typeof THEMES)[number]} theme
+ */
+async function applyTheme(theme) {
+  const panel = await api.setPanelLook({ color: theme.panelColor, opacity: state.panelOpacity });
+  const look = await api.setLook({ ballColor: theme.ballColor, textColor: theme.textColor });
+  state.panelColor = panel?.color ?? theme.panelColor;
+  state.ballColor = look?.ballColor ?? theme.ballColor;
+  state.textColor = look?.textColor ?? theme.textColor;
+  applyPanelLook(state.panelColor, state.panelOpacity);
+  applyTextLook();
+  render();
+  flashHint(`配色 · ${theme.name}`);
+}
+
 /* ── 渲染 ─────────────────────────────────────────────────────────────── */
 
 function render() {
@@ -258,6 +367,7 @@ function render() {
   ballColorEl.value = state.ballColor;
   textColorEl.value = state.textColor;
   eyesFollowEl.checked = state.eyesFollow === true;
+  idleGesturesEl.checked = state.idleGestures === true;
 
 
   if (state.autostart !== null) {
@@ -268,11 +378,25 @@ function render() {
   }
 
   if (state.error !== "") {
-    footEl.textContent = "失败 · 点译文区可重试（Ctrl+Enter）";
+    footNoteEl.textContent = "失败 · 点译文区可重试";
   } else if (state.busy) {
-    footEl.textContent = `翻译中 · ${state.busySeconds ?? 0}s · 串行 1/1`;
+    footNoteEl.textContent = `翻译中 · ${state.busySeconds ?? 0}s · 串行 1/1`;
   } else {
-    footEl.textContent = engine.footnote ?? `${engine.label} · 串行 1/1`;
+    footNoteEl.textContent = engine.footnote ?? `${engine.label} · 串行 1/1`;
+  }
+
+  // 模式由 CSS 的 html[data-mode] 选择器驱动：改一个属性，两边的块就互斥显示
+  root.dataset.mode = state.mode;
+  for (const button of modeButtons) {
+    button.setAttribute("aria-selected", button.dataset.mode === state.mode ? "true" : "false");
+  }
+
+  // 字号回显 + 预设高亮（手调过任一颜色就一个都不亮）
+  outFontEl.value = String(state.outFontSize);
+  outFontValueEl.textContent = `${state.outFontSize}px`;
+  const themeId = activeThemeId();
+  for (const button of presetsEl.children) {
+    button.setAttribute("aria-pressed", button.dataset.preset === themeId ? "true" : "false");
   }
 
   root.dataset.view = state.view;
@@ -283,12 +407,21 @@ function render() {
 /* ── 小工具 ───────────────────────────────────────────────────────────── */
 
 let hintTimer = 0;
+
+/** 提示行平时显示什么：两种模式的快捷键不一样。 */
+function defaultHint() {
+  return state.mode === "pick" ? "Ctrl+Alt+T 划词" : "Ctrl+Enter";
+}
+
 /** @param {string} text */
 function flashHint(text) {
   hintEl.textContent = text;
+  // 划词模式下按钮行整条隐藏，提示行看不见 —— 借底栏播一下，过一会儿还回去
+  if (state.mode === "pick") footNoteEl.textContent = text;
   clearTimeout(hintTimer);
   hintTimer = window.setTimeout(() => {
-    hintEl.textContent = "Ctrl+Enter";
+    hintEl.textContent = defaultHint();
+    if (state.mode === "pick") render(); // 底栏换回引擎状态
   }, HINT_MS);
 }
 
@@ -296,6 +429,46 @@ function flashHint(text) {
 function setView(view) {
   state.view = view;
   render();
+}
+
+/* ── 翻译模式 ─────────────────────────────────────────────────────────── */
+
+/** @param {unknown} value @returns {"pick" | "paste"} */
+function normalizeMode(value) {
+  return value === "paste" ? "paste" : "pick";
+}
+
+/** @returns {"pick" | "paste"} */
+function readStoredMode() {
+  try {
+    return normalizeMode(localStorage.getItem(MODE_KEY));
+  } catch {
+    // 存储被禁（隐私模式之类）：本次照常跑，只是记不住选择
+    return "pick";
+  }
+}
+
+/**
+ * 切换翻译模式。
+ *
+ * 两种模式共用同一块面板、同一个翻译通道，区别只在**显示哪些块**：
+ * 划词模式有原文块、没有粘贴框；粘贴模式有粘贴框、没有原文块。
+ * @param {"pick" | "paste"} mode
+ * @param {{silent?: boolean, focus?: boolean}} [options]
+ */
+function setMode(mode, options = {}) {
+  const next = normalizeMode(mode);
+  if (next === state.mode) return;
+  state.mode = next;
+  try {
+    localStorage.setItem(MODE_KEY, next);
+  } catch {
+    // 同上：存不下就算了，不影响本次使用
+  }
+  hintEl.textContent = defaultHint();
+  render();
+  if (next === "paste" && options.focus !== false) draftEl.focus();
+  if (options.silent !== true) flashHint(next === "pick" ? "划词模式" : "粘贴模式");
 }
 
 /* ── 翻译 ─────────────────────────────────────────────────────────────── */
@@ -390,9 +563,18 @@ async function translate(text) {
   render();
 }
 
-/** 点「翻译」：优先翻输入框里的，其次重翻原文。 */
+/**
+ * 点「翻译」/ Ctrl+Enter。
+ *
+ * 粘贴模式**不清空输入框**：原文块在粘贴模式下是隐藏的，清空了用户就看不到
+ * 自己刚翻的是哪一段。划词模式里输入框看不见，清不清都无所谓，保持老行为。
+ */
 function submit() {
   const draft = draftEl.value.trim();
+  if (state.mode === "paste" && draft !== "") {
+    translate(draft);
+    return;
+  }
   if (draft !== "") {
     draftEl.value = "";
     translate(draft);
@@ -460,6 +642,11 @@ scaleEl.addEventListener("change", () => api.setScale(Number(scaleEl.value)));
 goEl.addEventListener("click", submit);
 outEl.addEventListener("click", onOutClick);
 
+// 模式切换按钮。data-mode 就是目标模式，点谁切谁
+for (const button of modeButtons) {
+  button.addEventListener("click", () => setMode(button.dataset.mode));
+}
+
 draftEl.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
     event.preventDefault();
@@ -494,9 +681,22 @@ panelOpacityEl.addEventListener("input", savePanelLook);
 ballColorEl.addEventListener("input", saveLook);
 textColorEl.addEventListener("input", saveLook);
 
+// 字号：拖动时先本地生效（不卡手），松手才落盘 —— 拖一次滑块会触发几十个 input
+outFontEl.addEventListener("input", () => applyOutFont(Number(outFontEl.value)));
+outFontEl.addEventListener("change", async () => {
+  const result = await api.setFontSize(Number(outFontEl.value));
+  if (typeof result?.outFontSize === "number") applyOutFont(result.outFontSize);
+});
+
 eyesFollowEl.addEventListener("change", async () => {
   const result = await api.setEyesFollow(eyesFollowEl.checked);
   state.eyesFollow = result?.enabled === true;
+  render();
+});
+
+idleGesturesEl.addEventListener("change", async () => {
+  const result = await api.setIdleGestures(idleGesturesEl.checked);
+  state.idleGestures = result?.enabled === true;
   render();
 });
 
@@ -681,6 +881,9 @@ window.addEventListener("mouseleave", () => {
 api.onTranslateRequest((payload) => {
   const text = String(payload?.text ?? "").trim();
   if (text === "") return;
+  // 热键取到词了 → 一定是划词场景。用户可能正停在粘贴模式，这里顺手切回来，
+  // 否则原文块被隐藏，面板上只剩译文、看起来像丢了东西
+  setMode("pick", { silent: true, focus: false });
   setView("translate");
   translate(text);
 });
@@ -705,10 +908,18 @@ api.info().then((info) => {
   if (typeof info?.panelOpacity === "number") state.panelOpacity = info.panelOpacity;
   if (typeof info?.ballColor === "string") state.ballColor = info.ballColor;
   if (typeof info?.textColor === "string") state.textColor = info.textColor;
+  if (typeof info?.outFontSize === "number") applyOutFont(info.outFontSize);
   if (typeof info?.eyesFollow === "boolean") state.eyesFollow = info.eyesFollow;
+  if (typeof info?.idleGestures === "boolean") state.idleGestures = info.idleGestures;
+
+  // 上次选的模式：先落属性再首次渲染，避免界面先闪一下另一种布局
+  state.mode = readStoredMode();
+  root.dataset.mode = state.mode;
+  hintEl.textContent = defaultHint();
 
   fillTargets();
   fillScales();
+  buildPresets();
   applyPanelLook(state.panelColor, state.panelOpacity);
   applyTextLook();
   render();
