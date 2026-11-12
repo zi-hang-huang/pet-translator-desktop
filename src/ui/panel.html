@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN" data-view="translate">
+<html lang="zh-CN" data-view="translate" data-mode="pick">
   <head>
     <meta charset="utf-8" />
     <!--
@@ -46,7 +46,15 @@
           </div>
         </div>
 
-        <footer class="foot" id="foot">引擎：占位</footer>
+        <!-- 底部左边是翻译模式（划词 / 粘贴），右边是引擎状态。
+             模式放这儿而不是标题栏：标题栏是拖动把手，塞满按钮就没地方拖窗口了。 -->
+        <footer class="foot">
+          <div class="mode" id="mode" role="tablist" aria-label="翻译模式">
+            <button class="mode-btn" type="button" data-mode="pick" role="tab" aria-selected="true">划词</button>
+            <button class="mode-btn" type="button" data-mode="paste" role="tab" aria-selected="false">粘贴</button>
+          </div>
+          <span class="foot-note" id="foot-note">引擎：占位</span>
+        </footer>
       </div>
 
       <!-- ── 设置视图 ───────────────────────────────────────────────── -->
@@ -118,9 +126,33 @@
             <input type="color" id="text-color" class="color" value="#e8ecf4" title="面板正文颜色" />
           </div>
           <div class="field">
+            <span>译文字号</span>
+            <span class="range-wrap">
+              <input type="range" id="out-font" min="11" max="24" step="1" value="12" />
+              <span class="value" id="out-font-value">12px</span>
+            </span>
+          </div>
+          <p class="tip">只放大译文。原文块故意留小一号，扫一眼就知道自己在翻哪段。</p>
+
+          <!-- 配色预设：一键换「面板底色 + 正文颜色 + 球颜色」，
+               三个色值仍然分别存在下面两个颜色选择器里，预设只是快捷方式。 -->
+          <div class="field field-col">
+            <span>配色预设</span>
+            <div class="presets" id="presets"></div>
+          </div>
+
+          <div class="field">
             <span>眼睛跟随鼠标</span>
             <label class="switch">
               <input type="checkbox" id="eyes-follow" checked />
+              <span class="track"></span>
+            </label>
+          </div>
+
+          <div class="field">
+            <span>待命小动作</span>
+            <label class="switch">
+              <input type="checkbox" id="idle-gestures" checked />
               <span class="track"></span>
             </label>
           </div>
@@ -138,7 +170,7 @@
           </p>
         </div>
 
-        <footer class="foot">拖标题栏移动面板 · 球是独立窗口，各走各的</footer>
+        <footer class="foot"><span class="foot-note">拖标题栏移动面板 · 球是独立窗口，各走各的</span></footer>
       </div>
     </section>
 

@@ -95,6 +95,9 @@ let translating = false;
 /** 用户按 Esc 取消翻译。网页后端有时会拖很久，必须能中断。 */
 let abortRequested = false;
 
+/** 「翻完了」那张笑脸的回落定时器。下一次翻译必须能打断它，否则该忙的时候还在笑。 */
+let celebrateTimer = null;
+
 /** 取词进行中（防止连点开两次）。 */
 let picking = false;
 
@@ -225,16 +228,22 @@ function wireIpc() {
 
     translating = true;
     abortRequested = false;
+    // 上一轮的笑脸还没散场就又被按下翻译：先撤掉它的回落定时器，
+    // 否则 1.6 秒后会把 busy 盖成 idle —— 正在转的眼睛会突然停下
+    clearTimeout(celebrateTimer);
     ball.setState("busy");
     try {
       const result = await engine.translate(text, {
         target: payload?.target,
         shouldAbort: () => abortRequested,
       });
-      ball.setState("idle");
+      ball.setState("done");
+      clearTimeout(celebrateTimer);
+      celebrateTimer = setTimeout(() => ball.setState("idle"), 1600);
       pushEngineStatus();
       return { ok: true, ...result };
     } catch (error) {
+      clearTimeout(celebrateTimer);
       ball.setState("error");
       setTimeout(() => ball.setState("idle"), 1600);
       pushEngineStatus();
@@ -289,12 +298,26 @@ function wireIpc() {
     return { enabled: enabled === true };
   });
 
+  ipcMain.handle("settings:set-idle-gestures", (_event, enabled) => {
+    store.write({ idleGestures: enabled === true });
+    ball.pushLook();
+    return { enabled: enabled === true };
+  });
+
   ipcMain.handle("settings:set-panel-look", (_event, look) => {
     const color = /^#[0-9a-fA-F]{6}$/.test(String(look?.color ?? "")) ? String(look.color) : "#161a22";
     const raw = Number(look?.opacity);
     const opacity = Number.isFinite(raw) ? Math.min(100, Math.max(55, Math.round(raw))) : 100;
     store.write({ panelColor: color, panelOpacity: opacity });
     return { color, opacity };
+  });
+
+  ipcMain.handle("settings:set-font-size", (_event, size) => {
+    const raw = Number(size);
+    // 夹到 10~28：再小看不清，再大一行放不下几个字
+    const outFontSize = Number.isFinite(raw) ? Math.min(28, Math.max(10, Math.round(raw))) : 12;
+    store.write({ outFontSize });
+    return { outFontSize };
   });
 
   ipcMain.handle("settings:set-disable-gpu", (_event, enabled) => {
@@ -334,7 +357,9 @@ function wireIpc() {
     panelOpacity: store.read().panelOpacity,
     ballColor: store.read().ballColor,
     textColor: store.read().textColor,
+    outFontSize: store.read().outFontSize,
     eyesFollow: store.read().eyesFollow === true,
+    idleGestures: store.read().idleGestures === true,
   }));
 }
 
@@ -371,9 +396,9 @@ async function runPickupSelftest() {
   app.quit();
 }
 
-/** 四态轮播，用于肉眼验收动效。 */
+/** 五态轮播，用于肉眼验收动效。 */
 function startDemo() {
-  const states = ["idle", "listening", "busy", "error"];
+  const states = ["idle", "listening", "busy", "done", "error"];
   let index = 0;
   setInterval(() => {
     index = (index + 1) % states.length;
@@ -428,7 +453,13 @@ async function runSmoke() {
   }
 
   const forced = process.env.PET_TR_STATE;
-  if (forced === "idle" || forced === "listening" || forced === "busy" || forced === "error") {
+  if (
+    forced === "idle" ||
+    forced === "listening" ||
+    forced === "busy" ||
+    forced === "done" ||
+    forced === "error"
+  ) {
     ball.setState(forced);
     await wait(160);
   }

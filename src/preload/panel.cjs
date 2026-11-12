@@ -65,8 +65,12 @@ contextBridge.exposeInMainWorld("petPanel", {
   setPanelLook: (look) => ipcRenderer.invoke("settings:set-panel-look", look),
   /** @param {{ballColor?: string, textColor?: string}} look */
   setLook: (look) => ipcRenderer.invoke("settings:set-look", look),
+  /** @param {number} size - 译文字号（px）。 */
+  setFontSize: (size) => ipcRenderer.invoke("settings:set-font-size", size),
   /** @param {boolean} enabled */
   setEyesFollow: (enabled) => ipcRenderer.invoke("settings:set-eyes-follow", enabled),
+  /** @param {boolean} enabled */
+  setIdleGestures: (enabled) => ipcRenderer.invoke("settings:set-idle-gestures", enabled),
 
   /* ── 主进程推来的消息 ───────────────────────────────────────────────── */
   /** 取到文字了，去翻译。@param {(payload: {text: string}) => void} handler */
