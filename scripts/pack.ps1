@@ -1,12 +1,10 @@
-# 绿色打包：把 App 装进 Electron 运行时，产出一个可双击的文件夹。
+﻿# 绿色打包：把 App 装进 Electron 运行时，产出一个可双击的文件夹。
 #
 #     powershell -ExecutionPolicy Bypass -File scripts/pack.ps1
 #
 # 为什么不走 electron-builder：
-#   这台机器上没有 npm（Node 是精简运行时），而 electron-builder 还会从 GitHub
-#   拉 winCodeSign / nsis，国内网络经常卡住。绿色打包不依赖网络，几十秒出结果，
-#   而且产物能立刻双击验证 —— 对「先跑起来」这个目标更实在。
-#   `package.json` 里的 build 段仍然留着，将来 `npm i` 之后可以用它出安装包。
+#   绿色打包不依赖网络（不带 winCodeSign / nsis），几秒出结果，产物能立刻双击验证。
+#   `package.json` 里的 build 段仍然留着，将来可以用 electron-builder 出安装包。
 #
 # 产物结构（和 electron-builder 的 win-unpacked 一样）：
 #
@@ -16,7 +14,8 @@
 #     └─ resources\
 #        └─ app\
 #           ├─ package.json     ← main 指向 src/main/index.cjs
-#           ├─ src\             ← 我们的代码
+#           ├─ src\             ← 我们的代码（含 src/main/tessdata 里的 OCR 语言模型）
+#           ├─ node_modules\    ← 生产依赖（tesseract.js 及其依赖闭包）
 #           └─ assets\          ← 只带运行时要用的（tokens / tray / icon）
 
 param(
@@ -29,6 +28,44 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+# 收集并复制「生产依赖」到产物里（只带运行时真正用到的包，跳过 electron 等开发依赖）。
+# tesseract.js 是普通 JS/WASM 包，不需要原生重编译，直接把它和它的依赖闭包拷进去即可。
+function Copy-ProdDeps($rootModules, $outModules, $startNames) {
+  New-Item -ItemType Directory -Force -Path $outModules | Out-Null
+  $seen = @{}
+  $queue = New-Object System.Collections.Queue
+  foreach ($n in $startNames) { $queue.Enqueue($n) }
+
+  while ($queue.Count -gt 0) {
+    $name = [string]$queue.Dequeue()
+    if ($name -eq "" -or $seen.ContainsKey($name)) { continue }
+    $seen[$name] = $true
+
+    $src = Join-Path $rootModules $name
+    if (-not (Test-Path (Join-Path $src "package.json"))) {
+      Write-Host "[pack]   跳过缺失依赖: $name"
+      continue
+    }
+
+    $dst = Join-Path $outModules $name
+    # 作用域包（@scope/name）要先建父目录
+    $dstParent = Split-Path -Parent $dst
+    New-Item -ItemType Directory -Force -Path $dstParent | Out-Null
+    Copy-Item -Recurse -Force -Path $src -Destination $dst
+    Write-Host "[pack]   + $name"
+
+    # 继续收集它的运行时依赖（只看 dependencies，不看 devDependencies）
+    try {
+      $depPkg = Get-Content (Join-Path $src "package.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+      if ($depPkg.PSObject.Properties.Name -contains "dependencies" -and $null -ne $depPkg.dependencies) {
+        foreach ($dep in $depPkg.dependencies.PSObject.Properties.Name) { $queue.Enqueue($dep) }
+      }
+    } catch {
+      Write-Host "[pack]   无法解析 $name 的依赖: $($_.Exception.Message)"
+    }
+  }
+}
 
 $root = Split-Path -Parent $PSScriptRoot
 if ($OutDir -eq "") { $OutDir = Join-Path $root "dist\翻译球" }
@@ -108,6 +145,22 @@ New-Item -ItemType Directory -Force -Path (Join-Path $assetsOut "tray") | Out-Nu
 Copy-Item -Force (Join-Path $root "assets\tokens.css") $assetsOut
 Copy-Item -Force (Join-Path $root "assets\icon.ico") $assetsOut
 Copy-Item -Force (Join-Path $root "assets\tray\*.png") (Join-Path $assetsOut "tray")
+
+# ── 3b. 生产依赖（OCR 引擎）─────────────────────────────────────────────
+# OCR 用的是 tesseract.js（纯 JS/WASM）+ 同目录 tessdata 语言模型。
+# src 里的 tessdata 已经随 src 一起拷进来了；这里把 tesseract.js 及其依赖闭包
+# 拷进 resources\app\node_modules，Require 才能找到它。
+Write-Host "[pack] 复制生产依赖（OCR 引擎）…"
+$prodDeps = @()
+$rootPkg = Get-Content (Join-Path $root "package.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+if ($rootPkg.PSObject.Properties.Name -contains "dependencies" -and $null -ne $rootPkg.dependencies) {
+  $prodDeps = @($rootPkg.dependencies.PSObject.Properties.Name)
+}
+if ($prodDeps.Count -gt 0) {
+  Copy-ProdDeps (Join-Path $root "node_modules") (Join-Path $appDir "node_modules") $prodDeps
+} else {
+  Write-Host "[pack]   （package.json 没有 dependencies，跳过）"
+}
 
 # ── 4. 改名 + 图标 ─────────────────────────────────────────────────────
 $exeName = "$productName.exe"

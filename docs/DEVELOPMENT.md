@@ -29,8 +29,8 @@ src/main/       主进程
   panel-geometry.cjs  纯函数几何，不 import electron，可以直接跑断言
   pickup.cjs          取词：剪贴板快照 → 合成 Ctrl+C → 轮询 → 还原
   sendinput-helper.ps1 常驻 PowerShell，用 SendKeys 发 Ctrl+C
-  ocr.cjs             截图 OCR：拉起常驻识别器、按协议收发 JSON
-  ocr-helper.ps1      常驻 PowerShell，Windows.Media.Ocr 识别图片（文本走 Base64）
+  ocr.cjs             截图 OCR：tesseract.js 常驻 worker 识别（语言模型在 src/main/tessdata/）
+  tessdata/           内置 OCR 语言模型（chi_sim + eng，tesseract.js 的 .traineddata.gz）
   shot.cjs            框选截图：desktopCapturer 抓屏 → 全屏遮罩拖框 → 裁剪落盘
   hotkey.cjs          globalShortcut 封装（多槽位：pick 取词 / shot 截图）
   deepseek-window.cjs 隐藏的 DeepSeek 网页窗口
@@ -151,13 +151,24 @@ Get-Process 翻译球 -ErrorAction SilentlyContinue
 **`sendinput-helper.ps1` 必须存成 UTF-8 BOM。** PowerShell 5.1 否则按 GBK 读，
 中文注释会把语法撑爆。
 
-**`ocr-helper.ps1` 反过来：全 ASCII，一个非 ASCII 字节都不要有。** 它比
-`sendinput-helper.ps1` 还多一层坑：不但自身要被 PowerShell 正确解析，它吐给
-Node 的**每一行 stdout 还要是纯 ASCII**。`powershell.exe` 重定向 stdout 时按
-OEM 代码页（简体中文系统是 GBK）编码，只要回复里有中文，Node 收到的就是乱码。
-所以它的协议设计成「**文本一律 Base64(UTF-8)**」，脚本内注释也全用英文——这样
-无论 PowerShell 怎么解读码都不会坏。修改它之后跑一次自检：非 ASCII 字节数必须
-是 0（`[IO.File]::ReadAllBytes($p) | ? { $_ -gt 127 }`）。
+**截图 OCR 走 tesseract.js（纯 WASM），不再依赖系统。** 语言模型是
+`src/main/tessdata/*.traineddata.gz`，`ocr.cjs` 用 `createWorker("chi_sim+eng", 1, …)`
+建一个常驻 worker，跑在 worker_threads 里、不阻塞主进程。三个调参点，改之前先看实测：
+- **放大**：截图按物理像素裁剪，小字十几像素高，Tesseract 认不了。`prepareImage()`
+  用 Electron 的 `nativeImage.resize` 把短边 120~700px 的图放大 **2 倍**（<120px 放 3 倍）。
+  实测真实字号（18px）不放大错 3~4 个字，放大 2 倍后接近全对；放大 3~4 倍反而退化。
+- **页面分割模式**：`setParameters({ tessedit_pageseg_mode: "6" })`（单文本块）最稳，
+  PSM 3 会在框选边缘漏行，PSM 11/12 会把长句切碎。
+- **汉字间空格**：Tesseract 会在每两个汉字之间插空格（`文 件 编 辑`），`tidy()` 里用
+  零宽断言只删「CJK 之间」的空格，保留拉丁词与中文边界的空格。这段正则别删。
+
+**为什么不用 sharp / canvas / onnxruntime 之类的原生库？** 它们要针对 Electron 重编译
+（ABI 不匹配就崩），换台机器/换 Electron 版本都是坑。tesseract.js 是纯 JS/WASM，
+`nativeImage` 是 Electron 自带，整个改造**零原生依赖**，绿色打包直接能跑。
+
+**history：** 新增依赖要记得 `npm install tesseract.js`，然后在 `scripts/pack.ps1` 里
+`Copy-ProdDeps` 会把 `package.json` 的 `dependencies` 闭包一起拷进 `resources/app/node_modules`
+（绿色包不走 npm，不拷就 `Require` 不到）。
 
 **`.cmd` / `.bat` 必须存成 GBK + CRLF。** 用编辑器或 AI 工具默认写出的「无 BOM
 UTF-8 + 裸 LF」在 cmd.exe 下会当场炸：批处理按行解析，**只有 LF 没有 CR 时行被截断**，

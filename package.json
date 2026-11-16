@@ -42,5 +42,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true
     }
+  },
+  "dependencies": {
+    "tesseract.js": "^7.0.0"
   }
 }

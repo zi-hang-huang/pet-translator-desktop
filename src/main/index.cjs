@@ -824,7 +824,9 @@ if (!app.requestSingleInstanceLock()) {
 
     // 取词用的按键器现在就预热：它要加载 System.Windows.Forms，第一次要一两百毫秒
     pickup.warmUp();
-    // OCR 引擎同样预热：WinRT 激活 + 引擎构建第一次要几百毫秒
+    // OCR 引擎同样预热：tesseract.js 第一次要解压语言模型 + 创建 worker，约 0.5~2s
+    // 解压后的模型缓存放 userData 下，跨重启就不再重复解压
+    ocr.init({ cachePath: join(app.getPath("userData"), "ocr-cache") });
     ocr.warmUp();
 
     // 开机自启：只在打包版里真正写启动项，开发模式只回一句"没应用"

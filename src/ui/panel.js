@@ -1541,14 +1541,14 @@ api.onNotice((notice) => {
   }, 2600);
 });
 
-// OCR 失败（框选没字 / 没装语言包）：用错误块说清楚，别让用户以为程序坏了。
+// OCR 失败（框选没字 / 引擎没起来）：用错误块说清楚，别让用户以为程序坏了。
 api.onOcrFailed((payload) => {
   const reason = String(payload?.reason ?? "");
   let message;
-  if (reason === "no-language-pack" || reason === "engine-missing") {
-    message = "系统里没有可用的 OCR 语言包。请在「设置」里按提示安装英文语言包后再试。";
+  if (reason === "engine-missing") {
+    message = "本地 OCR 引擎没能启动。请重启程序再试；如果反复出现，把日志（%APPDATA%\\pet-translator-desktop\\app.log）发给开发者。";
   } else if (reason === "ocr-failed") {
-    message = "这块区域没识别出文字。可能是字太小、是深色背景上的小字，或者根本没有文字。";
+    message = "这块区域没识别出文字。可能是字太小、对比度太低，或者根本没有文字。框小一点、只框文字本身再试。";
   } else {
     message = "这块区域没识别出文字，换一块再试试。";
   }

@@ -105,13 +105,13 @@ contextBridge.exposeInMainWorld("petPanel", {
   /* ── 截图翻译 ─────────────────────────────────────────────────────── */
   /** 从面板发起一次截图翻译（等同于按截图热键）。 */
   startShot: () => ipcRenderer.send("shot:start"),
-  /** OCR 能力：有没有装英文包之类。@returns {Promise<{ok: boolean, langs: string[]}>} */
+  /** OCR 能力（引擎是否就绪）。@returns {Promise<{ok: boolean, langs: string[]}>} */
   ocrStatus: () => ipcRenderer.invoke("ocr:status"),
 
   /* ── 主进程推来的消息 ───────────────────────────────────────────────── */
   /** 取到文字了，去翻译。@param {(payload: {text: string}) => void} handler */
   onTranslateRequest: (handler) => subscribe("translate:request", handler),
-  /** OCR 失败（没装语言包 / 这块没字）。@param {(payload: {reason: string, detail: string}) => void} handler */
+  /** OCR 失败（引擎没起来 / 这块没字）。@param {(payload: {reason: string, detail: string}) => void} handler */
   onOcrFailed: (handler) => subscribe("ocr:failed", handler),
   /** @param {(status: {status: string, detail: string}) => void} handler */
   onEngineStatus: (handler) => subscribe("engine:status", handler),
