@@ -125,6 +125,18 @@ Get-Process 翻译球 -ErrorAction SilentlyContinue
 **`sendinput-helper.ps1` 必须存成 UTF-8 BOM。** PowerShell 5.1 否则按 GBK 读，
 中文注释会把语法撑爆。
 
+**`.cmd` / `.bat` 必须存成 GBK + CRLF。** 用编辑器或 AI 工具默认写出的「无 BOM
+UTF-8 + 裸 LF」在 cmd.exe 下会当场炸：批处理按行解析，**只有 LF 没有 CR 时行被截断**，
+`rem` 注释里的文字被当成命令去执行，双击就满屏报 `'setAppUserModelId' 不是内部或外部命令`、
+`'ON_RUN_AS_NODE'`、`'ot'`（`Electron` 的残片）。无 BOM UTF-8 中文配 `chcp 65001`
+在默认 GBK 控制台还会乱码，所以别加 chcp，直接按 GBK 存。
+
+写入时要三件事一起满足：`[System.Text.Encoding]::GetEncoding(936)` 编码、
+`-join "`r`n"` 换行、不加 BOM。自检三连：字节前 3 位不是 `EF BB BF`；CR 数 == LF 数；
+GBK 解码首几行中文正常。要验证解析，复制一份脚本把真正的 `start … electron.exe`
+那行换成 `echo OK`，`cmd /c` 跑一遍，应输出 `OK`、exit=0、无任何「不是内部或外部命令」
+（`启动翻译球.cmd` 的修复见提交 `2503744`）。
+
 **不要用真实账号压测。** 连续几十次请求会触发服务端限流，冷却一百秒左右才恢复，
 排查期间很容易把限流当成 bug。
 
