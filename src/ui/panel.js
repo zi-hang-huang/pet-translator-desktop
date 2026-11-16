@@ -38,6 +38,10 @@ const bannerCloseEl = document.getElementById("banner-close");
 const hotkeyValueEl = /** @type {HTMLButtonElement} */ (document.getElementById("hotkey-value"));
 const hotkeyNoteEl = document.getElementById("hotkey-note");
 const hotkeyEnabledEl = document.getElementById("hotkey-enabled");
+const shotHotkeyValueEl = /** @type {HTMLButtonElement} */ (document.getElementById("shot-hotkey-value"));
+const shotHotkeyNoteEl = document.getElementById("shot-hotkey-note");
+const shotHotkeyEnabledEl = document.getElementById("shot-hotkey-enabled");
+const shotStartEl = /** @type {HTMLButtonElement} */ (document.getElementById("shot-start"));
 const autostartEl = document.getElementById("autostart");
 const autostartNoteEl = document.getElementById("autostart-note");
 const disableGpuEl = document.getElementById("disable-gpu");
@@ -125,8 +129,13 @@ const state = {
   hotkey: null,
   /** 热键是否启用。 */
   hotkeyEnabled: true,
+  /** 截图翻译热键（独立于取词热键）。 */
+  shotHotkey: null,
+  shotHotkeyEnabled: true,
   /** 是否正在录制新热键（点一下按钮进入，按键后退出）。 */
   recordingHotkey: false,
+  /** 正在录制的是哪个槽位："pick" | "shot"。 */
+  recordingSlot: /** @type {"pick" | "shot"} */ ("pick"),
   autostart: null,
   disableGpu: false,
   panelColor: "#161a22",
@@ -482,7 +491,7 @@ function render() {
   renderBanner();
 
   if (state.hotkey !== null) {
-    if (state.recordingHotkey) {
+    if (state.recordingHotkey && state.recordingSlot === "pick") {
       // 录制中：提示用户按键，别把旧值盖回去
     } else if (state.hotkeyEnabled === false) {
       hotkeyValueEl.textContent = "已关闭";
@@ -497,6 +506,23 @@ function render() {
     }
   }
   hotkeyEnabledEl.checked = state.hotkeyEnabled !== false;
+
+  if (state.shotHotkey !== null) {
+    if (state.recordingHotkey && state.recordingSlot === "shot") {
+      // 录制中
+    } else if (state.shotHotkeyEnabled === false) {
+      shotHotkeyValueEl.textContent = "已关闭";
+      shotHotkeyValueEl.style.color = "var(--tr-text-muted)";
+      shotHotkeyValueEl.title = "热键已关闭，点一下开启并设置";
+    } else {
+      shotHotkeyValueEl.textContent = state.shotHotkey.ok
+        ? state.shotHotkey.label
+        : `${state.shotHotkey.label}（被占用）`;
+      shotHotkeyValueEl.style.color = state.shotHotkey.ok ? "" : "var(--tr-status-warn)";
+      shotHotkeyValueEl.title = "点击后按下新的快捷键";
+    }
+  }
+  shotHotkeyEnabledEl.checked = state.shotHotkeyEnabled !== false;
 
   disableGpuEl.checked = state.disableGpu === true;
   panelColorEl.value = state.panelColor;
@@ -714,27 +740,36 @@ function eventToAccelerator(event) {
   return [...mods, key].join("+");
 }
 
-/** 进入 / 退出录制热键。@param {boolean} on */
-function setRecordingHotkey(on) {
+/** 进入 / 退出录制热键。@param {boolean} on @param {"pick" | "shot"} [slot] */
+function setRecordingHotkey(on, slot = "pick") {
   state.recordingHotkey = on;
-  hotkeyValueEl.dataset.recording = on ? "1" : "0";
-  hotkeyValueEl.textContent = on ? "按下新快捷键…" : state.hotkey?.label ?? "Ctrl+Alt+T";
-  hotkeyValueEl.style.color = "";
-  if (on) hotkeyNoteEl.hidden = true;
+  state.recordingSlot = slot;
+  const btn = slot === "shot" ? shotHotkeyValueEl : hotkeyValueEl;
+  const note = slot === "shot" ? shotHotkeyNoteEl : hotkeyNoteEl;
+  const fallbackLabel = slot === "shot" ? "Ctrl+Alt+S" : "Ctrl+Alt+T";
+  const stored = slot === "shot" ? state.shotHotkey : state.hotkey;
+  btn.dataset.recording = on ? "1" : "0";
+  btn.textContent = on ? "按下新快捷键…" : stored?.label ?? fallbackLabel;
+  btn.style.color = "";
+  if (on) note.hidden = true;
 }
 
-/** 用户录完一个组合键，落地成设置。@param {string} accelerator */
-async function commitHotkey(accelerator) {
-  const result = await api.setHotkey(accelerator);
-  if (result?.status !== undefined) state.hotkey = result.status;
+/** 用户录完一个组合键，落地成设置。@param {string} accelerator @param {"pick" | "shot"} [slot] */
+async function commitHotkey(accelerator, slot = "pick") {
+  const note = slot === "shot" ? shotHotkeyNoteEl : hotkeyNoteEl;
+  const result = await api.setHotkey(accelerator, slot);
+  if (result?.status !== undefined) {
+    if (slot === "shot") state.shotHotkey = result.status;
+    else state.hotkey = result.status;
+  }
   if (result?.ok === true) {
-    hotkeyNoteEl.hidden = false;
-    hotkeyNoteEl.textContent = "已改好，立刻生效。";
-    hotkeyNoteEl.dataset.tone = "ok";
+    note.hidden = false;
+    note.textContent = "已改好，立刻生效。";
+    note.dataset.tone = "ok";
   } else {
-    hotkeyNoteEl.hidden = false;
-    hotkeyNoteEl.dataset.tone = "warn";
-    hotkeyNoteEl.textContent =
+    note.hidden = false;
+    note.dataset.tone = "warn";
+    note.textContent =
       result?.reason === "conflict"
         ? "这个组合被别的软件占着，已经退回原来的键。换一个试试。"
         : result?.reason === "reserved"
@@ -743,18 +778,27 @@ async function commitHotkey(accelerator) {
             ? "至少要带一个 Ctrl / Alt / Shift。"
             : "这个键用不了，换一个试试。";
   }
-  setRecordingHotkey(false);
+  setRecordingHotkey(false, slot);
   render();
 }
 
 // 点按钮：进入录制；录制中再点一下 = 取消。
 hotkeyValueEl.addEventListener("click", () => {
-  if (state.recordingHotkey) {
-    setRecordingHotkey(false);
+  if (state.recordingHotkey && state.recordingSlot === "pick") {
+    setRecordingHotkey(false, "pick");
     render();
     return;
   }
-  setRecordingHotkey(true);
+  setRecordingHotkey(true, "pick");
+});
+
+shotHotkeyValueEl.addEventListener("click", () => {
+  if (state.recordingHotkey && state.recordingSlot === "shot") {
+    setRecordingHotkey(false, "shot");
+    render();
+    return;
+  }
+  setRecordingHotkey(true, "shot");
 });
 
 // 录制时吃掉键盘事件：组合键直接落地，单独按 Esc 取消。
@@ -763,10 +807,11 @@ document.addEventListener(
   "keydown",
   (event) => {
     if (!state.recordingHotkey) return;
+    const slot = state.recordingSlot;
     event.preventDefault();
     event.stopPropagation();
     if (event.code === "Escape" || event.code === "Esc") {
-      setRecordingHotkey(false);
+      setRecordingHotkey(false, slot);
       render();
       return;
     }
@@ -774,14 +819,14 @@ document.addEventListener(
     if (accelerator === "") return; // 只按了修饰键或未知键，等下一个
     // 只按了一个修饰键时 eventToAccelerator 会给出 "Control" 之类，过滤掉
     if (["Control", "Alt", "Shift", "Super"].includes(accelerator)) return;
-    commitHotkey(accelerator);
+    commitHotkey(accelerator, slot);
   },
   true,
 );
 
 hotkeyEnabledEl.addEventListener("change", async () => {
   const on = hotkeyEnabledEl.checked;
-  const result = await api.setHotkeyEnabled(on);
+  const result = await api.setHotkeyEnabled(on, "pick");
   if (result?.status !== undefined) state.hotkey = result.status;
   state.hotkeyEnabled = on;
   if (on) {
@@ -794,6 +839,29 @@ hotkeyEnabledEl.addEventListener("change", async () => {
     hotkeyNoteEl.textContent = "已关闭，取词热键不再响应。";
   }
   render();
+});
+
+shotHotkeyEnabledEl.addEventListener("change", async () => {
+  const on = shotHotkeyEnabledEl.checked;
+  const result = await api.setHotkeyEnabled(on, "shot");
+  if (result?.status !== undefined) state.shotHotkey = result.status;
+  state.shotHotkeyEnabled = on;
+  if (on) {
+    shotHotkeyNoteEl.hidden = false;
+    shotHotkeyNoteEl.dataset.tone = "ok";
+    shotHotkeyNoteEl.textContent =
+      state.shotHotkey?.ok === false ? "已开启，但这个组合被占用了，换一个。" : "已开启。";
+  } else {
+    shotHotkeyNoteEl.hidden = false;
+    shotHotkeyNoteEl.dataset.tone = "ok";
+    shotHotkeyNoteEl.textContent = "已关闭，截图热键不再响应。";
+  }
+  render();
+});
+
+// 面板里的「截图」按钮：和截图热键同一条路
+shotStartEl?.addEventListener("click", () => {
+  api.startShot();
 });
 
 /** @param {"translate" | "settings"} view */
@@ -1473,6 +1541,21 @@ api.onNotice((notice) => {
   }, 2600);
 });
 
+// OCR 失败（框选没字 / 没装语言包）：用错误块说清楚，别让用户以为程序坏了。
+api.onOcrFailed((payload) => {
+  const reason = String(payload?.reason ?? "");
+  let message;
+  if (reason === "no-language-pack" || reason === "engine-missing") {
+    message = "系统里没有可用的 OCR 语言包。请在「设置」里按提示安装英文语言包后再试。";
+  } else if (reason === "ocr-failed") {
+    message = "这块区域没识别出文字。可能是字太小、是深色背景上的小字，或者根本没有文字。";
+  } else {
+    message = "这块区域没识别出文字，换一块再试试。";
+  }
+  if (typeof setError === "function") setError(message);
+  else flashHint(message);
+});
+
 /* ── 启动 ─────────────────────────────────────────────────────────────── */
 
 api.info().then((info) => {
@@ -1483,6 +1566,8 @@ api.info().then((info) => {
   if (info?.engine !== undefined) state.engine = info.engine;
   if (info?.hotkey !== undefined) state.hotkey = info.hotkey;
   if (typeof info?.hotkeyEnabled === "boolean") state.hotkeyEnabled = info.hotkeyEnabled;
+  if (info?.shotHotkey !== undefined) state.shotHotkey = info.shotHotkey;
+  if (typeof info?.shotHotkeyEnabled === "boolean") state.shotHotkeyEnabled = info.shotHotkeyEnabled;
   if (info?.autostart !== undefined) state.autostart = info.autostart;
   if (info?.disableGpu !== undefined) state.disableGpu = info.disableGpu === true;
   if (typeof info?.panelColor === "string") state.panelColor = info.panelColor;

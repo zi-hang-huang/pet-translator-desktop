@@ -29,7 +29,10 @@ src/main/       主进程
   panel-geometry.cjs  纯函数几何，不 import electron，可以直接跑断言
   pickup.cjs          取词：剪贴板快照 → 合成 Ctrl+C → 轮询 → 还原
   sendinput-helper.ps1 常驻 PowerShell，用 SendKeys 发 Ctrl+C
-  hotkey.cjs          globalShortcut 封装（注册 / 改键 / 关闭 / 加速键校验）
+  ocr.cjs             截图 OCR：拉起常驻识别器、按协议收发 JSON
+  ocr-helper.ps1      常驻 PowerShell，Windows.Media.Ocr 识别图片（文本走 Base64）
+  shot.cjs            框选截图：desktopCapturer 抓屏 → 全屏遮罩拖框 → 裁剪落盘
+  hotkey.cjs          globalShortcut 封装（多槽位：pick 取词 / shot 截图）
   deepseek-window.cjs 隐藏的 DeepSeek 网页窗口
   store.cjs           settings.json 读写
 src/shared/    主进程与渲染进程共用的小常量
@@ -147,6 +150,14 @@ Get-Process 翻译球 -ErrorAction SilentlyContinue
 
 **`sendinput-helper.ps1` 必须存成 UTF-8 BOM。** PowerShell 5.1 否则按 GBK 读，
 中文注释会把语法撑爆。
+
+**`ocr-helper.ps1` 反过来：全 ASCII，一个非 ASCII 字节都不要有。** 它比
+`sendinput-helper.ps1` 还多一层坑：不但自身要被 PowerShell 正确解析，它吐给
+Node 的**每一行 stdout 还要是纯 ASCII**。`powershell.exe` 重定向 stdout 时按
+OEM 代码页（简体中文系统是 GBK）编码，只要回复里有中文，Node 收到的就是乱码。
+所以它的协议设计成「**文本一律 Base64(UTF-8)**」，脚本内注释也全用英文——这样
+无论 PowerShell 怎么解读码都不会坏。修改它之后跑一次自检：非 ASCII 字节数必须
+是 0（`[IO.File]::ReadAllBytes($p) | ? { $_ -gt 127 }`）。
 
 **`.cmd` / `.bat` 必须存成 GBK + CRLF。** 用编辑器或 AI 工具默认写出的「无 BOM
 UTF-8 + 裸 LF」在 cmd.exe 下会当场炸：批处理按行解析，**只有 LF 没有 CR 时行被截断**，

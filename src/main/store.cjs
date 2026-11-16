@@ -28,6 +28,13 @@ const DEFAULTS = Object.freeze({
    * 关掉 = 完全不注册（`settings.json` 里的 hotkey 值仍然留着，重新打开时恢复）。
    */
   hotkeyEnabled: true,
+  /**
+   * 截图翻译热键（框选一块屏幕区域，OCR 出字后再翻译）。
+   * 和取词热键分开：两个是不同动作，用户可能只想留一个。
+   */
+  shotHotkey: "Ctrl+Alt+S",
+  /** 截图翻译热键是否启用。 */
+  shotHotkeyEnabled: true,
   /** 目标语言（M3 用）。 */
   target: "auto",
   /** 复用的 DeepSeek 专用会话地址（空表示还没建，按新对话处理）。 */

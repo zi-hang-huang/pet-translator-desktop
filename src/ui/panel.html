@@ -71,6 +71,7 @@
 
           <div class="actions">
             <button class="go" type="button" id="go">翻译</button>
+            <button class="ghost" type="button" id="shot-start" title="框选屏幕上的一块区域，识别文字后翻译">截图</button>
             <span class="hint" id="hint">Ctrl+Enter</span>
           </div>
         </div>
@@ -117,6 +118,18 @@
             </label>
           </div>
           <p class="tip">改键：点右边的按钮，直接按新的组合键（必须带 Ctrl / Alt / Shift）。和别的软件撞了会提示，并自动退回原来的键。</p>
+          <div class="field">
+            <span>截图翻译热键</span>
+            <button class="hotkey-btn" type="button" id="shot-hotkey-value" title="点击后按下新的快捷键">Ctrl+Alt+S</button>
+          </div>
+          <p class="tip" id="shot-hotkey-note" hidden></p>
+          <div class="field">
+            <span>启用截图翻译热键</span>
+            <label class="switch">
+              <input type="checkbox" id="shot-hotkey-enabled" checked />
+              <span class="track"></span>
+            </label>
+          </div>
           <div class="field">
             <span>翻译引擎</span>
             <span class="value" id="engine-name">占位</span>

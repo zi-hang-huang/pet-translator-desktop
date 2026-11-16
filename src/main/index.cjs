@@ -17,6 +17,8 @@ const history = require("./history.cjs");
 const tray = require("./tray.cjs");
 const hotkey = require("./hotkey.cjs");
 const pickup = require("./pickup.cjs");
+const ocr = require("./ocr.cjs");
+const shot = require("./shot.cjs");
 const autostart = require("./autostart.cjs");
 const log = require("./log.cjs");
 const { SCALES } = require("../shared/scales.cjs");
@@ -187,6 +189,60 @@ async function onHotkey() {
   await pickAndTranslate();
 }
 
+/** 截图翻译进行中（防止连按开两个框选窗口）。 */
+let shooting = false;
+
+/**
+ * 截图 → 框选 → OCR → 翻译。和取词走同一条下游：一样是拿到一段文字后
+ * 打开面板、发 translate:request。所以面板、历史、朗读、错误态全部自动复用。
+ */
+async function shotAndTranslate() {
+  if (shooting) return;
+  if (picking || translating) return; // 正在干别的就别叠加
+  shooting = true;
+  ball.setState("listening");
+  try {
+    const selected = await shot.selectRegion();
+    if (selected.ok !== true) {
+      // 取消 / 超时 / 太小：都不算错误，静静回到待命，不打扰用户
+      console.log(`[pet-tr] shot cancelled: ${selected.reason ?? "unknown"}`);
+      ball.setState("idle");
+      return;
+    }
+
+    const recognized = await ocr.recognizeFile(selected.imagePath);
+    if (recognized.ok !== true || recognized.text.trim() === "") {
+      console.log(`[pet-tr] ocr failed: ${recognized.reason ?? "empty"} ${recognized.detail ?? ""}`);
+      ball.setState("error");
+      setTimeout(() => ball.setState("idle"), 1400);
+      // 把失败具体原因推给面板，让用户看懂是「没装英文包」还是「这块没字」
+      openPanel();
+      sendToPanel("ocr:failed", {
+        reason: recognized.reason ?? "empty",
+        detail: recognized.detail ?? "",
+        langs: [],
+      });
+      return;
+    }
+
+    ball.setState("idle");
+    console.log(`[pet-tr] ocr ${recognized.text.length} chars in ${recognized.ms}ms (lang ${recognized.lang})`);
+    openPanel();
+    sendToPanel("translate:request", { text: recognized.text, source: "ocr" });
+  } catch (error) {
+    console.warn("pet-tr: shot failed:", String(error));
+    ball.setState("error");
+    setTimeout(() => ball.setState("idle"), 1400);
+  } finally {
+    shooting = false;
+  }
+}
+
+/** 热键：截图翻译。 */
+async function onShotHotkey() {
+  await shotAndTranslate();
+}
+
 /**
  * 按当前设置（重新）注册全局热键。改键、开关热键都走它，保证只有一处逻辑。
  * 返回 `hotkey.status()`，面板据此更新显示。
@@ -198,15 +254,35 @@ function applyHotkey() {
   const accelerator = typeof settings.hotkey === "string" ? settings.hotkey : "Control+Alt+T";
   if (!enabled) {
     // 关闭：显式传空串，hotkey.register 会当成「关」而不是「注册失败」
-    hotkey.register("", onHotkey);
+    hotkey.register("", onHotkey, "pick");
     console.log("[pet-tr] hotkey disabled by user");
-    return hotkey.status();
+    return hotkey.status("pick");
   }
   const registered = hotkey.register(accelerator, () => {
     onHotkey().catch((error) => console.warn("pet-tr: pickup failed:", String(error)));
-  });
+  }, "pick");
   console.log(`[pet-tr] hotkey ${accelerator} -> ${registered ? "ok" : "REJECTED (已被占用)"}`);
-  return hotkey.status();
+  return hotkey.status("pick");
+}
+
+/**
+ * 按当前设置（重新）注册**截图翻译**热键。和 applyHotkey 平行，互不影响。
+ * @returns {{accelerator: string, ok: boolean, label: string, enabled: boolean}}
+ */
+function applyShotHotkey() {
+  const settings = store.read();
+  const enabled = settings.shotHotkeyEnabled !== false;
+  const accelerator = typeof settings.shotHotkey === "string" ? settings.shotHotkey : "Ctrl+Alt+S";
+  if (!enabled) {
+    hotkey.register("", onShotHotkey, "shot");
+    console.log("[pet-tr] shot hotkey disabled by user");
+    return hotkey.status("shot");
+  }
+  const registered = hotkey.register(accelerator, () => {
+    onShotHotkey().catch((error) => console.warn("pet-tr: shot failed:", String(error)));
+  }, "shot");
+  console.log(`[pet-tr] shot hotkey ${accelerator} -> ${registered ? "ok" : "REJECTED (已被占用)"}`);
+  return hotkey.status("shot");
 }
 
 /** 把渲染进程的控制台接出来，否则出错时只能看到一片空白窗口。 */
@@ -331,41 +407,71 @@ function wireIpc() {
   });
 
   /* ── 热键改键 / 开关 ──────────────────────────────────────────────── */
-  ipcMain.handle("settings:set-hotkey", (_event, accelerator) => {
+  ipcMain.handle("settings:set-hotkey", (_event, accelerator, slotArg) => {
+    // 槽位：pick（取词）/ shot（截图）。默认 pick，兼容老面板。
+    const slot = slotArg === "shot" ? "shot" : "pick";
+    const handler = slot === "shot"
+      ? () => onShotHotkey().catch((error) => console.warn("pet-tr: shot failed:", String(error)))
+      : () => onHotkey().catch((error) => console.warn("pet-tr: pickup failed:", String(error)));
+
     const wanted = typeof accelerator === "string" ? accelerator : "";
     // 先校验形状，别把乱七八糟的东西写进设置文件
     const check = hotkey.validate(wanted);
     if (!check.ok) {
-      return { ok: false, reason: check.reason, status: hotkey.status() };
+      return { ok: false, reason: check.reason, status: hotkey.status(slot) };
     }
     const normalized = hotkey.normalize(wanted);
-    if (normalized === "") return { ok: false, reason: "empty", status: hotkey.status() };
+    if (normalized === "") return { ok: false, reason: "empty", status: hotkey.status(slot) };
 
     // 试注册：抢不到就直接说清楚，并把设置恢复成原来的（不影响正在用的热键）
-    const previous = hotkey.status();
-    const registered = hotkey.register(normalized, () => {
-      onHotkey().catch((error) => console.warn("pet-tr: pickup failed:", String(error)));
-    });
+    const previous = hotkey.status(slot);
+    const registered = hotkey.register(normalized, handler, slot);
     if (!registered) {
       // 恢复旧热键
       if (previous.enabled && previous.accelerator !== "") {
-        hotkey.register(previous.accelerator, () => {
-          onHotkey().catch((error) => console.warn("pet-tr: pickup failed:", String(error)));
-        });
+        hotkey.register(previous.accelerator, handler, slot);
       } else {
-        hotkey.register("", onHotkey);
+        hotkey.register("", handler, slot);
       }
-      return { ok: false, reason: "conflict", status: hotkey.status() };
+      return { ok: false, reason: "conflict", status: hotkey.status(slot) };
     }
-    store.write({ hotkey: normalized, hotkeyEnabled: true });
-    return { ok: true, status: hotkey.status() };
+    if (slot === "shot") store.write({ shotHotkey: normalized, shotHotkeyEnabled: true });
+    else store.write({ hotkey: normalized, hotkeyEnabled: true });
+    return { ok: true, status: hotkey.status(slot) };
   });
 
-  ipcMain.handle("settings:set-hotkey-enabled", (_event, enabled) => {
+  ipcMain.handle("settings:set-hotkey-enabled", (_event, enabled, slotArg) => {
+    const slot = slotArg === "shot" ? "shot" : "pick";
     const on = enabled === true;
-    store.write({ hotkeyEnabled: on });
-    applyHotkey();
-    return { ok: true, status: hotkey.status() };
+    if (slot === "shot") {
+      store.write({ shotHotkeyEnabled: on });
+      applyShotHotkey();
+    } else {
+      store.write({ hotkeyEnabled: on });
+      applyHotkey();
+    }
+    return { ok: true, status: hotkey.status(slot) };
+  });
+
+  /* ── 截图框选窗口回调 ─────────────────────────────────────────────── */
+  ipcMain.handle("shot:commit", async (_event, rect) => {
+    return shot.commitSelection(rect);
+  });
+  ipcMain.on("shot:cancel", () => {
+    shot.cancel();
+  });
+  ipcMain.on("shot:done", () => {
+    // 渲染层在 commit 之后调用；commitSelection 已经结算并清理过，这里是幂等兜底
+  });
+
+  /* ── 从面板按钮也可发起截图翻译 ───────────────────────────────────── */
+  ipcMain.on("shot:start", () => {
+    shotAndTranslate();
+  });
+
+  /* ── OCR 能力查询（面板提示用） ───────────────────────────────────── */
+  ipcMain.handle("ocr:status", async () => {
+    return ocr.status();
   });
 
   /* ── 开机自启 ─────────────────────────────────────────────────────── */
@@ -483,6 +589,8 @@ function wireIpc() {
     maxSource: MAX_SOURCE,
     hotkey: hotkey.status(),
     hotkeyEnabled: store.read().hotkeyEnabled !== false,
+    shotHotkey: hotkey.status("shot"),
+    shotHotkeyEnabled: store.read().shotHotkeyEnabled !== false,
     autostart: autostart.status(),
     panelOpen: panel.isVisible(),
     disableGpu: store.read().disableGpu === true,
@@ -716,6 +824,8 @@ if (!app.requestSingleInstanceLock()) {
 
     // 取词用的按键器现在就预热：它要加载 System.Windows.Forms，第一次要一两百毫秒
     pickup.warmUp();
+    // OCR 引擎同样预热：WinRT 激活 + 引擎构建第一次要几百毫秒
+    ocr.warmUp();
 
     // 开机自启：只在打包版里真正写启动项，开发模式只回一句"没应用"
     const autostartState = autostart.apply();
@@ -725,6 +835,7 @@ if (!app.requestSingleInstanceLock()) {
 
     // 全局热键。注册失败要能告诉用户，而不是按了没反应
     applyHotkey();
+    applyShotHotkey();
     pushEngineStatus();
 
     // --deepseek-login：直接把网页窗口摆出来，让人扫码/输手机号
@@ -762,6 +873,8 @@ if (!app.requestSingleInstanceLock()) {
     tray.destroy();
     hotkey.dispose();
     pickup.dispose();
+    ocr.dispose();
+    shot.dispose();
     engine.dispose?.();
   });
 }

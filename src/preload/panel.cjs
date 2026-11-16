@@ -56,17 +56,19 @@ contextBridge.exposeInMainWorld("petPanel", {
   /** @param {number} scale - 绝对倍率。 */
   setScale: (scale) => ipcRenderer.send("ball:scale-set", scale),
   /**
-   * 改取词热键。传 Electron 加速键写法（如 "Control+Alt+T"）。
+   * 改热键。传 Electron 加速键写法（如 "Control+Alt+T"）。
    * @param {string} accelerator
+   * @param {"pick" | "shot"} [slot]
    * @returns {Promise<{ok: boolean, reason?: string, status: object}>}
    */
-  setHotkey: (accelerator) => ipcRenderer.invoke("settings:set-hotkey", accelerator),
+  setHotkey: (accelerator, slot) => ipcRenderer.invoke("settings:set-hotkey", accelerator, slot),
   /**
-   * 开关取词热键（关掉就完全不注册）。
+   * 开关热键（关掉就完全不注册）。
    * @param {boolean} enabled
+   * @param {"pick" | "shot"} [slot]
    * @returns {Promise<{ok: boolean, status: object}>}
    */
-  setHotkeyEnabled: (enabled) => ipcRenderer.invoke("settings:set-hotkey-enabled", enabled),
+  setHotkeyEnabled: (enabled, slot) => ipcRenderer.invoke("settings:set-hotkey-enabled", enabled, slot),
   /** @returns {Promise<object>} */
   autostartStatus: () => ipcRenderer.invoke("autostart:status"),
   /** @param {boolean} enabled */
@@ -100,9 +102,17 @@ contextBridge.exposeInMainWorld("petPanel", {
   /** @param {boolean} enabled */
   setHistoryEnabled: (enabled) => ipcRenderer.invoke("settings:set-history-enabled", enabled),
 
+  /* ── 截图翻译 ─────────────────────────────────────────────────────── */
+  /** 从面板发起一次截图翻译（等同于按截图热键）。 */
+  startShot: () => ipcRenderer.send("shot:start"),
+  /** OCR 能力：有没有装英文包之类。@returns {Promise<{ok: boolean, langs: string[]}>} */
+  ocrStatus: () => ipcRenderer.invoke("ocr:status"),
+
   /* ── 主进程推来的消息 ───────────────────────────────────────────────── */
   /** 取到文字了，去翻译。@param {(payload: {text: string}) => void} handler */
   onTranslateRequest: (handler) => subscribe("translate:request", handler),
+  /** OCR 失败（没装语言包 / 这块没字）。@param {(payload: {reason: string, detail: string}) => void} handler */
+  onOcrFailed: (handler) => subscribe("ocr:failed", handler),
   /** @param {(status: {status: string, detail: string}) => void} handler */
   onEngineStatus: (handler) => subscribe("engine:status", handler),
   /** 主进程主动弹一条提示（如「程序已在运行」）。@param {(notice: {key: string, text: string, tone?: string}) => void} handler */

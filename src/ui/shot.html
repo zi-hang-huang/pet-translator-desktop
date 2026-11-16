@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>截图翻译 · 框选</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 100%; height: 100%; overflow: hidden;
+        background: transparent; cursor: crosshair; user-select: none;
+        font-family: "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+      }
+      /* 冻结的屏幕画面：和真实屏幕严丝合缝地叠在上面 */
+      #stage { position: fixed; inset: 0; background-repeat: no-repeat; background-size: 100% 100%; }
+      /* 调暗层：未选中的地方盖一层暗色 */
+      #veil { position: fixed; inset: 0; background: rgba(8, 12, 20, 0.55); }
+      /* 选中的洞：靠 box-shadow 的巨额外阴影把四周压暗，洞本身透亮 */
+      #hole {
+        position: fixed; display: none;
+        border: 1.5px solid rgba(96, 200, 255, 0.95);
+        box-shadow: 0 0 0 9999px rgba(8, 12, 20, 0.55);
+        background: transparent;
+      }
+      /* 尺寸提示 */
+      #hint {
+        position: fixed; display: none; padding: 4px 9px; border-radius: 6px;
+        background: rgba(12, 18, 28, 0.92); color: #cfe9ff; font-size: 12px;
+        letter-spacing: 0.3px; white-space: nowrap; pointer-events: none;
+        border: 1px solid rgba(96, 200, 255, 0.35);
+      }
+      /* 顶部操作提示：只在还没开始拖的时候显示 */
+      #tip {
+        position: fixed; top: 22px; left: 50%; transform: translateX(-50%);
+        padding: 8px 16px; border-radius: 999px; font-size: 13px;
+        background: rgba(12, 18, 28, 0.9); color: #dbeaff;
+        border: 1px solid rgba(120, 180, 255, 0.28);
+        box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35);
+        transition: opacity 0.18s ease; pointer-events: none;
+      }
+      #tip b { color: #8fd0ff; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <div id="stage"></div>
+    <div id="veil"></div>
+    <div id="hole"></div>
+    <div id="hint"></div>
+    <div id="tip">拖拽框选要翻译的区域 · 松开即识别 · 按 <b>Esc</b> 取消</div>
+
+    <script>
+      const stage = document.getElementById("stage");
+      const veil = document.getElementById("veil");
+      const hole = document.getElementById("hole");
+      const hint = document.getElementById("hint");
+      const tip = document.getElementById("tip");
+
+      let scaleFactor = 1;
+      let dragging = false;
+      let startX = 0;
+      let startY = 0;
+      let finished = false;
+
+      window.petShot.onInit(({ dataUrl, scaleFactor: sf }) => {
+        scaleFactor = sf || 1;
+        stage.style.backgroundImage = `url("${dataUrl}")`;
+      });
+
+      const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+      function draw(x, y) {
+        const left = Math.min(startX, x);
+        const top = Math.min(startY, y);
+        const width = Math.abs(x - startX);
+        const height = Math.abs(y - startY);
+
+        hole.style.display = "block";
+        hole.style.left = left + "px";
+        hole.style.top = top + "px";
+        hole.style.width = width + "px";
+        hole.style.height = height + "px";
+
+        // 提示显示物理像素尺寸（更接近真实分辨率，用户更直观）
+        hint.style.display = "block";
+        const physicalW = Math.round(width * scaleFactor);
+        const physicalH = Math.round(height * scaleFactor);
+        hint.textContent = `${physicalW} × ${physicalH}`;
+        // 提示框跟着鼠标右下走，靠近边缘时翻到另一侧
+        const hx = clamp(x + 14, 8, window.innerWidth - 90);
+        const hy = clamp(y + 14, 8, window.innerHeight - 34);
+        hint.style.left = hx + "px";
+        hint.style.top = hy + "px";
+      }
+
+      window.addEventListener("mousedown", (event) => {
+        if (event.button !== 0 || finished) return;
+        dragging = true;
+        startX = event.clientX;
+        startY = event.clientY;
+        tip.style.opacity = "0";
+        // 一开始拖就把整块的面纱交给 hole 的 box-shadow 来压暗
+        veil.style.display = "none";
+        draw(startX, startY);
+      });
+
+      window.addEventListener("mousemove", (event) => {
+        if (!dragging) return;
+        draw(event.clientX, event.clientY);
+      });
+
+      window.addEventListener("mouseup", async (event) => {
+        if (!dragging || finished) return;
+        dragging = false;
+
+        const left = Math.min(startX, event.clientX);
+        const top = Math.min(startY, event.clientY);
+        const width = Math.abs(event.clientX - startX);
+        const height = Math.abs(event.clientY - startY);
+
+        if (width < 8 || height < 8) {
+          // 误触：恢复原样，让用户重来
+          hole.style.display = "none";
+          hint.style.display = "none";
+          veil.style.display = "block";
+          tip.style.opacity = "1";
+          return;
+        }
+
+        finished = true;
+        hole.style.borderColor = "rgba(120, 220, 150, 0.95)";
+        const result = await window.petShot.commit({ x: left, y: top, width, height });
+        // 无论成功失败都收窗口；失败原因由主流程提示
+        window.petShot.done();
+        if (!result || result.ok !== true) {
+          // 理论上窗口已被销毁；留个兜底，避免卡住
+        }
+      });
+
+      window.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          finished = true;
+          window.petShot.cancel();
+        }
+      });
+
+      // 右键也当取消，符合截图工具的通用习惯
+      window.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        if (finished) return;
+        finished = true;
+        window.petShot.cancel();
+      });
+    </script>
+  </body>
+</html>

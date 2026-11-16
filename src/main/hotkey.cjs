@@ -1,7 +1,11 @@
 /**
- * 全局热键。
+ * 全局热键（多槽位）。
  *
- * 只做四件事：注册一个、报告是否成功、支持关掉、退出时释放。
+ * 现在有两件事各要一个热键：
+ *   - `pick`：选中文字 → 直接翻译（Ctrl+Alt+T）
+ *   - `shot`：框选屏幕 → OCR → 翻译（Ctrl+Alt+S）
+ *
+ * 所以按「槽位（slot）」分别管理，互不影响：改 `shot` 的键不会碰 `pick` 的。
  *
  * 「是否成功」必须报告出去：`Ctrl+Alt+T` 是常用组合，被别的软件占了的概率不低，
  * 而 `globalShortcut.register` 只是安静地返回 false —— 不告诉用户，他会以为
@@ -10,14 +14,16 @@
 
 const { globalShortcut } = require("electron");
 
-const state = {
-  accelerator: "",
-  ok: false,
-  /** 用户是否启用了热键。false 时完全不注册（有些人只想要那个球）。 */
-  enabled: true,
-  /** 上一次真正注册成功时用的加速键，关掉再开时拿它恢复。 */
-  lastGood: "",
+/** 每个槽位自己的状态。 */
+const slots = {
+  pick: { accelerator: "", ok: false, enabled: true, lastGood: "" },
+  shot: { accelerator: "", ok: false, enabled: true, lastGood: "" },
 };
+
+/** 取某个槽位，未知的按 pick 处理（向后兼容老调用）。 */
+function slotOf(name) {
+  return slots[name] ?? slots.pick;
+}
 
 /**
  * 规整 Electron 加速键的写法：修饰键统一成 Control/Alt/Shift，主键大写。
@@ -52,7 +58,7 @@ function normalize(raw) {
 }
 
 /**
- * 判断一个加速键能不能拿来当取词热键。
+ * 判断一个加速键能不能拿来当热键。
  *
  * 拦三类：空 / 没有修饰键（单独的字母会吃掉全局输入）/ 只有修饰键没有主键。
  * 顺带挡掉和 `Ctrl+Alt+Delete` 这种系统保留组合撞车的（Windows 抢不到，注册必失败）。
@@ -71,13 +77,15 @@ function validate(accelerator) {
 }
 
 /**
- * 注册（先释放旧的）。传空字符串表示「关闭热键」。
+ * 注册（先释放该槽位旧的）。传空字符串表示「关闭该槽位热键」。
  * @param {string} accelerator - Electron 加速键写法，如 "Control+Alt+T"。空串 = 关闭。
  * @param {() => void} handler
+ * @param {"pick" | "shot"} [slot] - 槽位，默认 pick（兼容原有调用）
  * @returns {boolean} 是否注册成功（关闭时恒为 true）。
  */
-function register(accelerator, handler) {
-  unregister();
+function register(accelerator, handler, slot = "pick") {
+  const state = slotOf(slot);
+  unregister(slot);
   const wanted = normalize(accelerator);
   if (wanted === "") {
     // 显式关闭：不注册，但记住这是「关」而不是「失败」
@@ -99,8 +107,9 @@ function register(accelerator, handler) {
   return ok;
 }
 
-/** 释放当前热键。 */
-function unregister() {
+/** 释放某个槽位的热键（不传则只释放 pick，保持老行为）。 */
+function unregister(slot = "pick") {
+  const state = slotOf(slot);
   if (state.accelerator === "") return;
   try {
     globalShortcut.unregister(state.accelerator);
@@ -117,8 +126,13 @@ function toLabel(accelerator) {
     .replace(/Super/g, "Win");
 }
 
-/** @returns {{accelerator: string, ok: boolean, label: string, enabled: boolean}} */
-function status() {
+/**
+ * 某个槽位的状态。
+ * @param {"pick" | "shot"} [slot]
+ * @returns {{accelerator: string, ok: boolean, label: string, enabled: boolean, lastGood: string}}
+ */
+function status(slot = "pick") {
+  const state = slotOf(slot);
   return {
     accelerator: state.accelerator,
     ok: state.ok,
@@ -135,7 +149,7 @@ function dispose() {
   } catch {
     // 已经在退出了
   }
-  state.ok = false;
+  for (const state of Object.values(slots)) state.ok = false;
 }
 
 module.exports = { register, unregister, status, dispose, normalize, validate, toLabel };

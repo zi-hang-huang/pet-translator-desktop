@@ -232,9 +232,57 @@ app.whenReady().then(async () => {
     { bounds: closed.bounds, circle: closed.circle },
   );
 
+  // ── 13. 热键双槽位：pick / shot 互不串台 ─────────────────────────────
+  // 截图翻译新增了第二个热键槽位（shot）。这里只验证纯逻辑：规整、校验、
+  // 槽位隔离。真正的 globalShortcut.register 抢不到就不算对，交给人工验。
+  const hotkey = require("../src/main/hotkey.cjs");
+
+  check(
+    "热键规整统一写法",
+    hotkey.normalize("ctrl+alt+s") === "Control+Alt+S" &&
+      hotkey.normalize(" ALT + shift + F1 ") === "Alt+Shift+F1",
+    { shot: hotkey.normalize("ctrl+alt+s"), f1: hotkey.normalize(" ALT + shift + F1 ") },
+  );
+
+  check(
+    "热键校验拦无效组合",
+    hotkey.validate("S").ok === false &&
+      hotkey.validate("S").reason === "no-modifier" &&
+      hotkey.validate("").ok === false &&
+      hotkey.validate("Control+Alt+Delete").ok === false &&
+      hotkey.validate("Control+Alt+S").ok === true,
+    {
+      single: hotkey.validate("S"),
+      empty: hotkey.validate(""),
+      reserved: hotkey.validate("Control+Alt+Delete"),
+      good: hotkey.validate("Control+Alt+S"),
+    },
+  );
+
+  // 两个槽位状态必须独立：给 shot 传空串（=关闭）不能打乱 pick 的 accelerator。
+  // 注意：这里**不能断言 lastGood**——真实环境里 Ctrl+Alt+T 可能被别的程序占着，
+  // 注册失败时 lastGood 本来就是空，那和槽位隔离无关。
+  hotkey.register("Control+Alt+T", () => {}, "pick");
+  const pickStatus = hotkey.status("pick");
+  hotkey.register("", () => {}, "shot");
+  const shotStatus = hotkey.status("shot");
+  const pickAfter = hotkey.status("pick");
+
+  check(
+    "两套热键槽位互不影响",
+    shotStatus.enabled === false &&
+      shotStatus.label === "未设置" &&
+      shotStatus.accelerator === "" &&
+      pickStatus.accelerator === "Control+Alt+T" &&
+      pickAfter.accelerator === "Control+Alt+T" &&
+      pickAfter.enabled === true,
+    { pickStatus, shotStatus, pickAfter },
+  );
+
+  hotkey.dispose();
+
   const ok = results.every((item) => item.pass);
   console.log("[selftest] " + JSON.stringify({ ok, results }));
-
   // 面板窗口会拦 close（那是"收起"而不是"关闭"），退出前必须先放行
   panel.allowClose();
   panel.destroy();
