@@ -512,3 +512,85 @@ DOM 探针：页面里存下来的助手回复就是「退火」两个字 ——
 
 **代价**：多一个窗口进程；面板和球要各自处理穿透与投影留白（同一套逻辑写两遍，
 但每份都很短）。换来的是「面板挡到东西了就挪开」这个行为成立。
+
+---
+
+## 19. M5 打磨：验收记录（已完成 P1/P6/P4/P3）
+
+PLAN 原文 M5 只写了「流式、朗读、历史、错误态、深浅色、单实例」一行、估 1 天。
+实测逐项查完：**错误态、单实例其实早就基本完成**，深浅色用户决定不做，流式待定。
+本轮交付四项：
+
+### 19.1 P1 错误态补漏（已完成）
+
+- **加载错误码 → 人话**：`deepseek-window.cjs` 新增 `describeLoadError(code, desc)`，
+  把 -106 断网 / -105 DNS / -118 超时 / -102 连接被拒 / -101 连接重置 / -109 不可达 /
+  -137 域名解析失败 / -21 网络切换 翻成「哪里坏了 + 怎么办」，其余保留原描述兜底。
+  以前只把 `ERR_INTERNET_DISCONNECTED (-106)` 原样扔给面板，用户看不懂。
+- **验证码探测**：`page-scripts.cjs` 的 `diagnose()` 增加 `captcha` 判定——命中
+  hcaptcha/recaptcha/cloudflare 的 iframe 或容器、或页面出现「请完成验证/人机验证/滑动验证」
+  字样、或 iframe src 命中已知验证域名，任一成立即 `captcha:true`。
+  `web-page.cjs` 把 captcha 判断**排在登录/输入框之前**（风控弹窗会同时把输入框顶没，
+  不先报「要验证」只会看到莫名其妙的「找不到输入框」）。
+- **提示条**：`panel.html` 新增 `#banner`，由 `bannerFor(engine)` 按后端状态算出该弹哪条：
+  captcha→「要人机验证·去验证」、need-login→「登录已过期·去登录」、offline/dns/timeout→「·重试」。
+  可点叉记住不再弹（`dismissedBanners`）。**底色用不透明实色**——实测用户的浅色配色下
+  半透明红底配浅红字看不清。
+- **state 增加 `code` 字段**：`deepseek-window.status()` 返回机器码（offline/dns/captcha/
+  need-login/ok…），`engineStatus()`、`ball:info`、preload、panel 全线透传，面板据码决定提示。
+
+### 19.2 P6 单实例补完（已完成）
+
+`index.cjs` 的 `second-instance` 从「只 ball.show()」扩展为：球亮出来 + 面板若开着就
+`restore/showInactive/moveTop` 提到最前 + `webContents.send("app:notice")` 让面板闪一条
+「翻译球已经在运行了」。`preload/panel.cjs` 新增 `onNotice`，面板用一次性定时器收掉，
+不污染「按后端状态自动决定的提示条」。
+
+### 19.3 P4 朗读（已完成）
+
+- 新文件 `ui/speech.js`：包一层 `speechSynthesis`。纯函数（可单测）与浏览器控制器双出口
+  （浏览器挂 `window.PetSpeech`，Node 挂 `module.exports`，一份代码两处用）。
+  - `detectLang(text)`：假名→ja、汉字→zh、其余→en（**假名先判**，否则日文被汉字规则吃掉）
+  - `langCandidates(target, text)`：目标语言→BCP-47 候选列表；`auto` 时按译文内容判
+  - `pickVoice(voices, candidates)`：先精确匹配 `zh-CN`，再前缀匹配任意 `zh-*`，最后 null
+  - `hasVoiceFor`、`supported`、`loadVoices`（等 `voiceschanged`，最多 800ms）、`speak`、`stop`
+- 面板：译文块右上角小喇叭（`#speak`），有译文才露面，正在读变 ⏹；语速滑块 `#speech-rate`（0.5–2.0x，
+  存 `speechRate`）。**没语音包时仍然读**（英文语音读中文不会崩），但提示「读音可能不准 + 怎么装语音包」。
+- 关键防错：切目标语言/开始新翻译/关面板都会 `stop()`，避免「译文换了声音还在念」「窗口关了还在响」。
+- **语音包探测时机**：启动时只判「有没有任何语音包」（启动时没译文，拿空文本判语言会一律判成英文说反话）；
+  具体语言是否齐全在点朗读那一刻用真实译文判。
+
+### 19.4 P3 本地历史（已完成）
+
+- 新文件 `main/history.cjs`：独立 `history.json`（**不塞 settings.json**——history 会长，
+  settings 是几百字节小文件、每次拖球都同步写，混在一起写盘会变重）。
+  存 `{id, src, out, target, ts, ms}`，**不存页面 URL**。上限 200 条 FIFO，字段截断 4000 字。
+  写盘同样「临时文件 + rename」。纯函数 `normalizeEntry/pushEntry/searchEntries` 可单测。
+- 主进程：翻译成功后（且 `historyEnabled !== false`）自动 `history.add`；IPC 提供
+  `history:list`（带搜索）/`history:remove`/`history:clear`/`settings:set-history-enabled`
+  （**关掉开关立刻清空**——用户关这个开关的意思是「别留」，不是「以后别留」）。
+- 面板：标题栏 🕘 打开抽屉（盖在翻译视图上方，**不切视图**——切视图会丢掉正在翻译的状态）。
+  倒序列出原文/译文/时间，点击回填 + 重译，✕ 删单条，「清空」二次确认，顶部搜索框即时过滤。
+- 默认开启，设置页可关。
+
+### 19.5 验收数字（回归基线对比）
+
+| 测试 | 基线 | 本次 | 结论 |
+|---|---|---|---|
+| `selftest.cjs` | 19/19 | 19/19 | 无回退 |
+| `selftest-resize.cjs` | 11/11 | 11/11 | 无回退 |
+| `selftest-deepseek.cjs` | 6/6 | 6/6 | 无回退 |
+| `speech.js` 纯函数 | — | 13/13 | 新增 |
+| `history.cjs` 纯函数 | — | 15/15 | 新增 |
+| 冒烟（正常/断网/验证码/登录过期/历史抽屉/设置页） | — | 全部渲染正常，无 renderer error | 新增 |
+
+### 19.6 逐项状态
+
+| 项 | 状态 |
+|---|---|
+| 错误态（断网/未登录/超长/验证码） | ✅ 已完成 |
+| 单实例 | ✅ 已完成（补了可见反馈） |
+| 朗读 | ✅ 已完成 |
+| 本地历史 | ✅ 已完成 |
+| 深浅色跟随系统 | ❌ 用户决定不做，保留现有 9 套手动预设 |
+| 流式输出 | ⏸ 待用户拍板（默认关，风险在 `waitForReply` 轮询链路） |

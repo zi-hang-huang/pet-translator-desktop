@@ -13,6 +13,7 @@ const { join } = require("node:path");
 const ball = require("./ball-window.cjs");
 const panel = require("./panel-window.cjs");
 const store = require("./store.cjs");
+const history = require("./history.cjs");
 const tray = require("./tray.cjs");
 const hotkey = require("./hotkey.cjs");
 const pickup = require("./pickup.cjs");
@@ -72,14 +73,28 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** 引擎状态（占位引擎没有 status()）。 */
 function engineStatus() {
+  // 验收/截图用：PET_TR_FAKE_STATUS=offline / captcha / need-login / timeout / ok
+  // 只从环境变量读，绝不落进设置，正式使用不受影响。
+  const fake = process.env.PET_TR_FAKE_STATUS;
+  if (typeof fake === "string" && fake !== "") {
+    const table = {
+      ok: { status: "ok", detail: "已登录", code: "ok" },
+      off: { status: "off", detail: "网页后端未启动", code: "not-started" },
+      offline: { status: "bad", detail: "网络已断开，检查一下网线/Wi-Fi，恢复后点重试", code: "offline" },
+      timeout: { status: "bad", detail: "连接超时，DeepSeek 那边没响应，点重试或稍后再试", code: "timeout" },
+      captcha: { status: "warn", detail: "需要完成人机验证", code: "captcha" },
+      "need-login": { status: "warn", detail: "需要登录 DeepSeek", code: "need-login" },
+    };
+    if (table[fake] !== undefined) return table[fake];
+  }
   if (typeof engine.status === "function") {
     try {
       return engine.status();
     } catch (error) {
-      return { status: "bad", detail: String(error?.message ?? error) };
+      return { status: "bad", detail: String(error?.message ?? error), code: "unknown" };
     }
   }
-  return { status: "off", detail: "" };
+  return { status: "off", detail: "", code: "not-started" };
 }
 
 /** 把引擎状态推给面板，让状态灯跟着变。 */
@@ -237,6 +252,10 @@ function wireIpc() {
         target: payload?.target,
         shouldAbort: () => abortRequested,
       });
+      // 翻译成功且历史开着才记。记失败不算错，history.add 自己会吞掉异常。
+      if (store.read().historyEnabled !== false && typeof result?.text === "string" && result.text !== "") {
+        history.add({ src: text, out: result.text, target: payload?.target ?? "auto", ms: Number(result.ms) || 0 });
+      }
       ball.setState("done");
       clearTimeout(celebrateTimer);
       celebrateTimer = setTimeout(() => ball.setState("idle"), 1600);
@@ -320,6 +339,13 @@ function wireIpc() {
     return { outFontSize };
   });
 
+  ipcMain.handle("settings:set-speech-rate", (_event, rate) => {
+    const raw = Number(rate);
+    const speechRate = Number.isFinite(raw) ? Math.min(2, Math.max(0.5, Math.round(raw * 10) / 10)) : 1;
+    store.write({ speechRate });
+    return { speechRate };
+  });
+
   ipcMain.handle("settings:set-disable-gpu", (_event, enabled) => {
     store.write({ disableGpu: enabled === true });
     return { enabled: enabled === true, needsRestart: true };
@@ -327,6 +353,30 @@ function wireIpc() {
 
   ipcMain.handle("autostart:status", () => autostart.status());
   ipcMain.handle("autostart:set", (_event, enabled) => autostart.set(enabled === true));
+
+  /* ── 本地历史 ─────────────────────────────────────────────────────── */
+  ipcMain.handle("history:list", (_event, query) => {
+    const all = history.read();
+    return { entries: history.searchEntries(all, query), total: all.length, max: history.MAX_ENTRIES };
+  });
+
+  ipcMain.handle("history:remove", (_event, id) => {
+    const entries = history.remove(id);
+    return { ok: true, entries, total: entries.length };
+  });
+
+  ipcMain.handle("history:clear", () => {
+    history.clear();
+    return { ok: true, entries: [], total: 0 };
+  });
+
+  ipcMain.handle("settings:set-history-enabled", (_event, enabled) => {
+    const on = enabled === true;
+    store.write({ historyEnabled: on });
+    // 关掉就立刻清空：用户关这个开关，意思就是「别留」，不是「以后别留」
+    if (!on) history.clear();
+    return { enabled: on };
+  });
 
   /* ── 杂项 ─────────────────────────────────────────────────────────── */
   ipcMain.handle("ball:copy", async (_event, text) => {
@@ -345,6 +395,7 @@ function wireIpc() {
       label: engine.label,
       status: engineStatus().status,
       detail: engineStatus().detail,
+      code: engineStatus().code,
       footnote: `${engine.label} · ${engine.note ?? ""}`,
     },
     targets: TARGETS,
@@ -358,6 +409,8 @@ function wireIpc() {
     ballColor: store.read().ballColor,
     textColor: store.read().textColor,
     outFontSize: store.read().outFontSize,
+    speechRate: store.read().speechRate,
+    historyEnabled: store.read().historyEnabled !== false,
     eyesFollow: store.read().eyesFollow === true,
     idleGestures: store.read().idleGestures === true,
   }));
@@ -452,6 +505,17 @@ async function runSmoke() {
     await wait(400);
   }
 
+  // 打开历史抽屉（冒烟截图用）：走真实 DOM 点击路径
+  if (process.env.PET_TR_HISTORY === "1") {
+    const window = panel.getWindow();
+    if (window !== undefined && !window.isDestroyed()) {
+      await window.webContents.executeJavaScript(
+        `document.querySelector('[data-action="history"]').click()`,
+      );
+      await wait(600);
+    }
+  }
+
   const forced = process.env.PET_TR_STATE;
   if (
     forced === "idle" ||
@@ -502,7 +566,22 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on("second-instance", () => {
+    // 第二次双击 exe：以前只把球 show 出来，用户毫无感知，会以为程序坏了。
+    // 现在做三件事：球亮出来、面板（若开着）提到最前、并在面板上闪一条「已在运行」。
     ball.show();
+    if (panel.isVisible()) {
+      const window = panel.getWindow();
+      if (window !== undefined && !window.isDestroyed()) {
+        if (window.isMinimized()) window.restore();
+        window.showInactive();
+        window.moveTop();
+        window.webContents.send("app:notice", {
+          key: "already-running-" + Date.now(),
+          text: "翻译球已经在运行了（就在这儿）",
+          tone: "info",
+        });
+      }
+    }
     console.log("[pet-tr] second instance blocked; existing ball shown");
   });
 

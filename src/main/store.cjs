@@ -44,6 +44,13 @@ const DEFAULTS = Object.freeze({
    * 必须列在 DEFAULTS 里，否则 write() 会把它丢掉 —— 调完重启就变回默认值。
    */
   outFontSize: 12,
+  /** 朗读语速（0.5 ~ 2.0）。只影响 speechSynthesis，不碰翻译。 */
+  speechRate: 1,
+  /**
+   * 是否记录本地翻译历史。默认开 —— 不然没人知道有这功能。
+   * 关掉的那一刻要把已有历史一起清掉（见 index.cjs 的 set-history-enabled）。
+   */
+  historyEnabled: true,
   /** 眼睛跟着鼠标看。 */
   eyesFollow: true,
   /**

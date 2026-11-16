@@ -71,7 +71,7 @@ const FIND_SEND = String.raw`
   }
 `;
 
-/** @returns {string} 诊断：页面在哪、有没有输入框、有几条消息、发送按钮会被认成谁。 */
+/** @returns {string} 诊断：页面在哪、有没有输入框、有几条消息、发送按钮会被认成谁、是不是在要人机验证。 */
 function diagnose() {
   return String.raw`
     (() => {
@@ -79,6 +79,33 @@ function diagnose() {
       ${FIND_SEND}
       const messages = [...document.querySelectorAll(".ds-message")];
       const body = String(document.body?.innerText ?? "").replace(/\s+/g, " ").slice(0, 220);
+
+      // 人机验证（验证码）探测。DeepSeek 触发风控时会弹 hCaptcha / Cloudflare
+      // Turnstile 之类的挑战框，此时输入框要么没了、要么点了没反应。三种证据任一命中就算：
+      //   1. 官方验证组件的 iframe / 容器节点在（最硬的证据）
+      //   2. 页面上出现"请完成验证/人机验证/滑动验证"这类字样
+      //   3. 命中已知的验证域名（hcaptcha / recaptcha / challenges.cloudflare）
+      const captchaSelectors = [
+        'iframe[src*="hcaptcha"]',
+        'iframe[src*="recaptcha"]',
+        'iframe[src*="challenges.cloudflare"]',
+        '[class*="h-captcha"]',
+        '[class*="cf-turnstile"]',
+        '#captcha',
+        '[id*="captcha" i]',
+        '[class*="captcha" i]',
+      ];
+      let captchaNode = null;
+      for (const selector of captchaSelectors) {
+        const node = document.querySelector(selector);
+        if (node !== null) { captchaNode = node; break; }
+      }
+      const captchaWord = /请完成(以下)?验证|人机验证|滑动验证|安全验证|verify you are human|complete the (security )?check/i.test(body);
+      const captchaFrame = [...document.querySelectorAll("iframe")].some((frame) =>
+        /captcha|challenges\.cloudflare|recaptcha/i.test(String(frame.src ?? "")),
+      );
+      const captcha = captchaNode !== null || captchaWord || captchaFrame;
+
       const found = composer === null ? { node: null, how: "no-composer" } : findSendButton(composer);
       return {
         href: location.href,
@@ -88,6 +115,8 @@ function diagnose() {
         composerCount: composers.length,
         sendButton: found.node === null ? null : { how: found.how, label: labelOf(found.node).slice(0, 40) },
         messageCount: messages.length,
+        captcha,
+        captchaHint: captcha ? String((captchaNode?.className ?? captchaNode?.id ?? "")).slice(0, 60) : "",
         bodyHint: body,
       };
     })()

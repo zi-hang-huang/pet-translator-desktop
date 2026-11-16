@@ -231,6 +231,11 @@ async function translate(text, options = {}) {
 
   progress("diagnose");
   const diagnosis = await waitForComposer();
+  // 验证码要排在登录/输入框判断之前：风控弹窗会同时把输入框顶没，
+  // 不先报「要验证」，用户只会看到一句莫名其妙的「找不到输入框」。
+  if (diagnosis?.captcha === true) {
+    throw fail("captcha", "DeepSeek 要人机验证了：点面板里的「打开 DeepSeek 窗口」过一下验证再翻");
+  }
   if (diagnosis?.signedIn !== true) {
     throw fail("need-login", "需要登录 DeepSeek：点面板里的「打开 DeepSeek 窗口」登录一次");
   }

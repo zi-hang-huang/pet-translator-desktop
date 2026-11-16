@@ -34,6 +34,41 @@ const LOAD_TIMEOUT_MS = 30_000;
 /** 单条页面脚本的超时。页面主线程被卡住时，executeJavaScript 永远不返回。 */
 const SCRIPT_TIMEOUT_MS = 15_000;
 
+/**
+ * Chromium 网络错误码 → 人话。
+ *
+ * 之前 `did-fail-load` 只把原始的 `ERR_INTERNET_DISCONNECTED (-106)` 扔给面板，
+ * 用户看到一串英文代码根本不知道该怎么办。这里按最常见的那几个翻译成
+ * 「哪里坏了 + 该怎么办」，其余保留原描述当兜底。
+ *
+ * 码值来自 Chromium 的 net_error_list.h，负号不能丢。
+ * @param {number} code
+ * @param {string} description
+ * @returns {{code: string, detail: string}}
+ */
+function describeLoadError(code, description) {
+  switch (code) {
+    case -106:
+      return { code: "offline", detail: "网络已断开，检查一下网线/Wi-Fi，恢复后点重试" };
+    case -105:
+      return { code: "dns", detail: "DNS 解析失败，可能是网络没连好或 DNS 被污染，换个网络试试" };
+    case -118:
+      return { code: "timeout", detail: "连接超时，DeepSeek 那边没响应，点重试或稍后再试" };
+    case -102:
+      return { code: "refused", detail: "连接被拒绝，可能被防火墙/代理拦了，检查一下网络设置" };
+    case -101:
+      return { code: "reset", detail: "连接被重置，多半是网络不稳定或被中间设备打断，点重试" };
+    case -109:
+      return { code: "unreachable", detail: "网络不可达，检查代理/VPN 是否正常" };
+    case -137:
+      return { code: "name-not-resolved", detail: "域名解析不出来，检查网络或 DNS 设置" };
+    case -21:
+      return { code: "net-changed", detail: "网络切换中，稍等一下点重试" };
+    default:
+      return { code: "load-failed", detail: `网页加载失败：${description}（${code}）` };
+  }
+}
+
 const state = {
   /** @type {BrowserWindow | undefined} */
   window: undefined,
@@ -43,6 +78,8 @@ const state = {
   url: "",
   /** 最近一次错误，给人看。 */
   lastError: "",
+  /** 最近一次错误的机器码（offline/dns/…），给面板决定要不要弹提示条。 */
+  lastErrorCode: "",
   /** 真退出：close 事件不再拦。 */
   quitting: false,
 };
@@ -85,11 +122,15 @@ function ensure(options = {}) {
   window.webContents.on("did-fail-load", (_event, code, description, url) => {
     // -3 是用户/我们主动打断，不算失败
     if (code === -3) return;
-    state.lastError = `${description} (${code}) @ ${url}`;
+    const friendly = describeLoadError(code, description);
+    state.lastError = friendly.detail;
+    state.lastErrorCode = friendly.code;
     state.loaded = false;
+    console.log(`[pet-tr] did-fail-load ${code} (${friendly.code}) ${description} @ ${url}`);
   });
   window.webContents.on("render-process-gone", (_event, details) => {
     state.lastError = `页面进程退出：${details.reason}`;
+    state.lastErrorCode = "crashed";
     state.loaded = false;
   });
 
@@ -155,9 +196,12 @@ async function open(options = {}) {
     await Promise.race([window.loadURL(targetUrl()), timeout]);
     state.loaded = true;
     state.lastError = "";
+    state.lastErrorCode = "";
     state.url = window.webContents.getURL();
   } catch (error) {
     state.lastError = String(error?.message ?? error);
+    // 超时是我们自己的 race 抛的，没有经过 did-fail-load，单独打个码
+    if (state.lastErrorCode === "") state.lastErrorCode = "timeout";
     throw new Error(`打不开 DeepSeek 网页：${state.lastError}`);
   }
 }
@@ -240,17 +284,22 @@ async function run(source, options = {}) {
  */
 function status() {
   if (state.window === undefined || state.window.isDestroyed()) {
-    return { status: "off", detail: "网页后端未启动", url: "" };
+    return { status: "off", detail: "网页后端未启动", url: "", code: "not-started" };
   }
   if (state.lastError !== "") {
-    return { status: "bad", detail: state.lastError, url: state.url };
+    return {
+      status: "bad",
+      detail: state.lastError,
+      url: state.url,
+      code: state.lastErrorCode === "" ? "load-failed" : state.lastErrorCode,
+    };
   }
   const url = state.url || state.window.webContents.getURL();
-  if (!state.loaded) return { status: "warn", detail: "页面还在加载", url };
+  if (!state.loaded) return { status: "warn", detail: "页面还在加载", url, code: "loading" };
   if (url.includes(SIGN_IN_HINT)) {
-    return { status: "warn", detail: "需要登录 DeepSeek", url };
+    return { status: "warn", detail: "需要登录 DeepSeek", url, code: "need-login" };
   }
-  return { status: "ok", detail: "已登录", url };
+  return { status: "ok", detail: "已登录", url, code: "ok" };
 }
 
 /** @returns {boolean} 窗口是否还活着。 */

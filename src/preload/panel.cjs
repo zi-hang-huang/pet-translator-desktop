@@ -67,14 +67,28 @@ contextBridge.exposeInMainWorld("petPanel", {
   setLook: (look) => ipcRenderer.invoke("settings:set-look", look),
   /** @param {number} size - 译文字号（px）。 */
   setFontSize: (size) => ipcRenderer.invoke("settings:set-font-size", size),
+  /** @param {number} rate - 朗读语速 0.5~2.0。 */
+  setSpeechRate: (rate) => ipcRenderer.invoke("settings:set-speech-rate", rate),
   /** @param {boolean} enabled */
   setEyesFollow: (enabled) => ipcRenderer.invoke("settings:set-eyes-follow", enabled),
   /** @param {boolean} enabled */
   setIdleGestures: (enabled) => ipcRenderer.invoke("settings:set-idle-gestures", enabled),
+
+  /* ── 本地历史 ─────────────────────────────────────────────────────── */
+  /** @param {string} [query] @returns {Promise<{entries: Array<object>, total: number, max: number}>} */
+  historyList: (query) => ipcRenderer.invoke("history:list", query),
+  /** @param {string} id @returns {Promise<{ok: boolean, entries: Array<object>, total: number}>} */
+  historyRemove: (id) => ipcRenderer.invoke("history:remove", id),
+  /** @returns {Promise<{ok: boolean, entries: Array<object>, total: number}>} */
+  historyClear: () => ipcRenderer.invoke("history:clear"),
+  /** @param {boolean} enabled */
+  setHistoryEnabled: (enabled) => ipcRenderer.invoke("settings:set-history-enabled", enabled),
 
   /* ── 主进程推来的消息 ───────────────────────────────────────────────── */
   /** 取到文字了，去翻译。@param {(payload: {text: string}) => void} handler */
   onTranslateRequest: (handler) => subscribe("translate:request", handler),
   /** @param {(status: {status: string, detail: string}) => void} handler */
   onEngineStatus: (handler) => subscribe("engine:status", handler),
+  /** 主进程主动弹一条提示（如「程序已在运行」）。@param {(notice: {key: string, text: string, tone?: string}) => void} handler */
+  onNotice: (handler) => subscribe("app:notice", handler),
 });

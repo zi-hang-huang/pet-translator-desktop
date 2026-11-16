@@ -31,6 +31,10 @@ const lampEl = document.getElementById("lamp");
 const lampSettingsEl = document.getElementById("lamp-settings");
 const engineNameEl = document.getElementById("engine-name");
 const engineDetailEl = document.getElementById("engine-detail");
+const bannerEl = document.getElementById("banner");
+const bannerTextEl = document.getElementById("banner-text");
+const bannerActionEl = /** @type {HTMLButtonElement} */ (document.getElementById("banner-action"));
+const bannerCloseEl = document.getElementById("banner-close");
 const hotkeyValueEl = document.getElementById("hotkey-value");
 const autostartEl = document.getElementById("autostart");
 const autostartNoteEl = document.getElementById("autostart-note");
@@ -50,6 +54,19 @@ const targetTopEl = document.getElementById("target-top");
 const targetSettingsEl = document.getElementById("target-settings");
 const scaleEl = document.getElementById("scale");
 const resizeGripEl = document.getElementById("resize-grip");
+const speakEl = /** @type {HTMLButtonElement} */ (document.getElementById("speak"));
+const speechRateEl = /** @type {HTMLInputElement} */ (document.getElementById("speech-rate"));
+const speechRateValueEl = document.getElementById("speech-rate-value");
+const speechNoteEl = document.getElementById("speech-note");
+const historyEnabledEl = /** @type {HTMLInputElement} */ (document.getElementById("history-enabled"));
+const historyDrawerEl = document.getElementById("history-drawer");
+const historyListEl = document.getElementById("history-list");
+const historyCountEl = document.getElementById("history-count");
+const historySearchEl = /** @type {HTMLInputElement} */ (document.getElementById("history-search"));
+const historyClearEl = document.getElementById("history-clear");
+
+/** 朗读模块（speech.js 先加载）。Node 环境下没有它，全部降级为不可用。 */
+const speech = typeof window.PetSpeech !== "undefined" ? window.PetSpeech : null;
 
 /** 提示文字的停留时长。 */
 const HINT_MS = 1400;
@@ -107,12 +124,27 @@ const state = {
   textColor: "#e8ecf4",
   /** 译文字号（px）。只影响译文块，原文块保持小一号。 */
   outFontSize: 12,
+  /** 朗读语速。 */
+  speechRate: 1,
+  /** 当前是否正在朗读（决定喇叭按钮显示 🔊 还是 ⏹）。 */
+  speaking: false,
+  /** 系统里到底有没有对应语言的语音包（没包就置灰 + 提示）。 */
+  speechReady: false,
+  /** 是否记录本地历史。 */
+  historyEnabled: true,
   eyesFollow: true,
   /** 待命时球自己玩（眨眼/张望/偷笑/打哈欠/睡着）。 */
   idleGestures: true,
   ignoring: false,
   lastPassCheck: 0,
   drag: /** @type {{fromX: number, fromY: number, moved: boolean} | null} */ (null),
+  /**
+   * 当前要显示的提示条：{ key, text, tone, action, actionLabel }，或 null。
+   * key 用来记「这一条用户已经点过叉」，同一条不反复弹。
+   */
+  banner: /** @type {null | {key: string, text: string, tone: string, action?: string, actionLabel?: string}} */ (null),
+  /** 用户关掉过哪些提示（按 key 记，避免每 8 秒推一次状态就重新弹）。 */
+  dismissedBanners: /** @type {Set<string>} */ (new Set()),
 };
 
 /* ── 颜色 ─────────────────────────────────────────────────────────────── */
@@ -317,6 +349,60 @@ async function applyTheme(theme) {
 
 /* ── 渲染 ─────────────────────────────────────────────────────────────── */
 
+/**
+ * 根据后端状态算出「该不该弹提示条、弹哪一条」。
+ *
+ * 这一版把三类必须让用户知道的事集中到一条提示条里，不再只靠右下角那盏小灯：
+ *   1. 要人机验证（captcha）—— 必须点「去验证」
+ *   2. 登录过期（need-login）—— 必须点「去登录」
+ *   3. 网络断了（offline/dns/timeout…）—— 点「重试」
+ * 其余状态（ok/off/loading）不弹，避免平时打扰。
+ *
+ * @param {any} engine
+ * @returns {null | {key: string, text: string, tone: string, action?: string, actionLabel?: string}}
+ */
+function bannerFor(engine) {
+  const code = String(engine?.code ?? "");
+  if (code === "captcha") {
+    return { key: "captcha", text: "DeepSeek 要人机验证了，点右边过一下验证", tone: "warn", action: "login", actionLabel: "去验证" };
+  }
+  if (engine?.status === "warn" && (code === "need-login" || String(engine?.detail ?? "").includes("需要登录"))) {
+    return { key: "need-login", text: "DeepSeek 登录已过期", tone: "warn", action: "login", actionLabel: "去登录" };
+  }
+  if (code === "offline") {
+    return { key: "offline", text: "网络已断开，检查网络后点重试", tone: "bad", action: "retry", actionLabel: "重试" };
+  }
+  if (code === "dns" || code === "name-not-resolved") {
+    return { key: "dns", text: "域名解析失败，换个网络试试", tone: "bad", action: "retry", actionLabel: "重试" };
+  }
+  if (code === "timeout") {
+    return { key: "timeout", text: "连接超时，DeepSeek 那边没响应", tone: "bad", action: "retry", actionLabel: "重试" };
+  }
+  if (engine?.status === "bad") {
+    return { key: "bad-" + code, text: String(engine?.detail ?? "后端出问题了"), tone: "bad", action: "retry", actionLabel: "重试" };
+  }
+  return null;
+}
+
+function renderBanner() {
+  const wanted = state.banner;
+  if (wanted === null || state.dismissedBanners.has(wanted.key)) {
+    bannerEl.hidden = true;
+    return;
+  }
+  bannerEl.hidden = false;
+  bannerEl.dataset.tone = wanted.tone;
+  bannerTextEl.textContent = wanted.text;
+  if (wanted.action !== undefined && wanted.actionLabel !== undefined) {
+    bannerActionEl.hidden = false;
+    bannerActionEl.textContent = wanted.actionLabel;
+    bannerActionEl.dataset.action = wanted.action;
+  } else {
+    bannerActionEl.hidden = true;
+    delete bannerActionEl.dataset.action;
+  }
+}
+
 function render() {
   srcEl.textContent = state.source === "" ? "在任意程序里选中文字，按 Ctrl+Alt+T 就会直接翻译。" : state.source;
   srcEl.dataset.placeholder = state.source === "" ? "1" : "0";
@@ -346,12 +432,27 @@ function render() {
       : state.elapsed > 0 && state.result !== "" ? `译文 · ${state.elapsed.toFixed(1)} 秒`
         : "译文";
 
+  // 喇叭：只有真有译文才露面；正在读就变成停止符号
+  const canSpeak = state.result !== "" && !state.busy && speech !== null && speech.supported();
+  speakEl.hidden = !canSpeak;
+  if (canSpeak) {
+    speakEl.textContent = state.speaking ? "⏹" : "🔊";
+    speakEl.title = state.speaking
+      ? "停止朗读"
+      : state.speechReady ? "朗读译文" : "朗读译文（系统可能没有该语言的语音包）";
+    speakEl.dataset.unavailable = state.speechReady ? "0" : "1";
+  }
+
   goEl.disabled = state.busy;
 
   const engine = state.engine ?? { id: "?", label: "未知", status: "off" };
   for (const lamp of [lampEl, lampSettingsEl]) lamp.dataset.status = engine.status ?? "off";
   engineNameEl.textContent = engine.label ?? engine.id;
   engineDetailEl.textContent = engine.detail === "" || engine.detail === undefined ? "未启动" : engine.detail;
+
+  // 提示条跟着后端状态走。翻译本身失败时的提示用 flashHint/错误块，不占这条。
+  state.banner = bannerFor(engine);
+  renderBanner();
 
   if (state.hotkey !== null) {
     hotkeyValueEl.textContent = state.hotkey.ok
@@ -404,9 +505,110 @@ function render() {
   viewSettings.hidden = state.view !== "settings";
 }
 
+/* ── 本地历史抽屉 ─────────────────────────────────────────────────────── */
+
+/** 上次拉到的历史，供点击回填时按 id 取原文（DOM 里不塞整段文本）。 */
+let historyCache = [];
+
+/** 把时间戳变成「今天 14:05 / 昨天 / 03-12」这种能一眼看懂的样子。 */
+function formatTime(ts) {
+  const date = new Date(Number(ts) || 0);
+  if (Number.isNaN(date.getTime())) return "";
+  const now = new Date();
+  const sameDay = date.toDateString() === now.toDateString();
+  const pad = (n) => String(n).padStart(2, "0");
+  if (sameDay) return `今天 ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return `昨天 ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/**
+ * 渲染历史列表。
+ * @param {Array<any>} entries
+ * @param {number} total
+ */
+function renderHistory(entries, total) {
+  historyCountEl.textContent = total > 0 ? `${entries.length} / ${total} 条` : "";
+  historyListEl.replaceChildren();
+
+  if (entries.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "history-empty";
+    empty.textContent = total === 0
+      ? (state.historyEnabled ? "还没有翻译记录。翻一句就自动存这儿了。" : "历史记录已关闭。可在设置里重新打开。")
+      : "没有匹配的记录。";
+    historyListEl.append(empty);
+    return;
+  }
+
+  for (const entry of entries) {
+    const item = document.createElement("div");
+    item.className = "history-item";
+    item.dataset.id = entry.id;
+
+    const src = document.createElement("div");
+    src.className = "history-src";
+    src.textContent = entry.src;
+
+    const out = document.createElement("div");
+    out.className = "history-out";
+    out.textContent = entry.out;
+
+    const meta = document.createElement("div");
+    meta.className = "history-meta";
+    const time = document.createElement("span");
+    time.textContent = formatTime(entry.ts);
+    const spacer = document.createElement("span");
+    spacer.className = "spacer";
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "history-del";
+    del.dataset.historyDelete = entry.id;
+    del.title = "删除这条";
+    del.textContent = "✕";
+    meta.append(time, spacer, del);
+
+    item.append(src, out, meta);
+    historyListEl.append(item);
+  }
+}
+
+/** 拉一次历史并渲染。 */
+async function refreshHistory() {
+  try {
+    const result = await api.historyList(historySearchEl.value);
+    historyCache = Array.isArray(result?.entries) ? result.entries : [];
+    renderHistory(historyCache, Number(result?.total) || 0);
+  } catch (error) {
+    historyListEl.replaceChildren();
+    const empty = document.createElement("div");
+    empty.className = "history-empty";
+    empty.textContent = `读取历史失败：${String(error?.message ?? error)}`;
+    historyListEl.append(empty);
+  }
+}
+
+/** 开/关抽屉。打开时每次都重新拉，保证跟刚才的翻译一致。 */
+async function setHistoryOpen(open) {
+  if (open) {
+    await refreshHistory();
+    historyDrawerEl.hidden = false;
+    // 抽屉一开，把搜索框的键盘焦点给它，直接能搜
+    historySearchEl.focus();
+  } else {
+    historyDrawerEl.hidden = true;
+    historySearchEl.value = "";
+  }
+}
+
 /* ── 小工具 ───────────────────────────────────────────────────────────── */
 
 let hintTimer = 0;
+
+/** 一次性提示条（主进程推来的 notice）的自动收掉定时器。 */
+let noticeTimer = 0;
 
 /** 提示行平时显示什么：两种模式的快捷键不一样。 */
 function defaultHint() {
@@ -481,11 +683,14 @@ function describeError(result) {
   if (code === "busy") return "上一次翻译还没结束";
   if (code === "engine") {
     if (result.code === "need-login") return "需要登录 DeepSeek：进设置 → 打开 DeepSeek 窗口，登录一次";
+    if (result.code === "captcha") return result.detail ?? "DeepSeek 要人机验证了：进设置 → 打开 DeepSeek 窗口过一下验证";
     if (result.code === "no-composer") return "DeepSeek 页面找不到输入框，可能改版了";
     if (result.code === "no-reply") return "消息发出去了，但页面没有回复（可能掉登录或触发风控）";
     if (result.code === "aborted") return "已取消";
     if (result.code === "short-reply") return result.detail ?? "回复异常短，可能被限流了，等十几秒再试";
     if (result.code === "send-failed") return result.detail ?? "消息没发出去，点译文区重试";
+    // 加载失败：detail 已经是 describeLoadError 翻好的中文，直接用
+    if (typeof result.detail === "string" && result.detail !== "") return result.detail;
     return `翻译失败：${result.detail ?? "未知原因"}`;
   }
   if (code === "ipc") return `和主进程的连接断了（${result.detail ?? "未知原因"}），点译文区重试`;
@@ -532,6 +737,12 @@ async function translate(text) {
     return;
   }
   if (state.busy) return;
+
+  // 开始新一次翻译就把上一段朗读掐掉：不然译文已经换新的，喇叭还在念旧的
+  if (state.speaking) {
+    speech?.stop();
+    state.speaking = false;
+  }
 
   state.busy = true;
   state.error = "";
@@ -598,6 +809,56 @@ async function onOutClick() {
   flashHint(ok ? "已复制" : "复制失败");
 }
 
+/**
+ * 朗读 / 停止。
+ *
+ * 三个必须处理的现实情况：
+ *   1. 正在读 → 再点一下停（不然长文读起来没法打断）
+ *   2. 系统没语音包 → 仍然读（英文语音读中文不会崩），但要提示「发音可能不准」
+ *   3. 「自动」档位 → 用译文自身的文字判语言，而不是拿目标语言档位猜
+ */
+function toggleSpeak() {
+  if (speech === null || !speech.supported()) {
+    flashHint("这个环境不支持朗读");
+    return;
+  }
+  if (state.speaking) {
+    speech.stop();
+    state.speaking = false;
+    render();
+    return;
+  }
+  if (state.result === "") return;
+
+  const target = state.target === "auto" ? "auto" : state.target;
+  // 到这一刻才有真正的译文，才能判「这个语言的语音包到底有没有」
+  const voices = window.speechSynthesis.getVoices();
+  const candidates = speech.langCandidates(target, state.result);
+  const ready = speech.hasVoiceFor(voices, candidates);
+  state.speechReady = ready;
+
+  const result = speech.speak(state.result, {
+    target,
+    rate: state.speechRate,
+    onEnd: () => {
+      state.speaking = false;
+      render();
+    },
+    onError: (reason) => {
+      state.speaking = false;
+      render();
+      flashHint(`朗读失败：${reason}`);
+    },
+  });
+  if (result.ok !== true) {
+    flashHint(result.reason === "empty" ? "没有可朗读的内容" : "朗读没启动起来");
+    return;
+  }
+  state.speaking = true;
+  render();
+  if (!ready) flashHint("系统没装该语言的语音包，读音可能不准（设置 → 时间和语言 → 语音）");
+}
+
 /* ── 控件 ─────────────────────────────────────────────────────────────── */
 
 function fillTargets() {
@@ -641,6 +902,21 @@ scaleEl.addEventListener("change", () => api.setScale(Number(scaleEl.value)));
 
 goEl.addEventListener("click", submit);
 outEl.addEventListener("click", onOutClick);
+speakEl.addEventListener("click", toggleSpeak);
+
+// 语速：拖动时本地生效，松手才落盘（跟字号一个套路，避免拖一次落几十次盘）
+speechRateEl.addEventListener("input", () => {
+  state.speechRate = Number(speechRateEl.value);
+  speechRateValueEl.textContent = `${state.speechRate.toFixed(1)}x`;
+});
+speechRateEl.addEventListener("change", async () => {
+  const result = await api.setSpeechRate(Number(speechRateEl.value));
+  if (typeof result?.speechRate === "number") {
+    state.speechRate = result.speechRate;
+    speechRateEl.value = String(result.speechRate);
+    speechRateValueEl.textContent = `${result.speechRate.toFixed(1)}x`;
+  }
+});
 
 // 模式切换按钮。data-mode 就是目标模式，点谁切谁
 for (const button of modeButtons) {
@@ -734,13 +1010,91 @@ panelEl.addEventListener("click", (event) => {
   const target = event.target instanceof Element ? event.target.closest("[data-action]") : null;
   if (target === null) return;
   const action = target.getAttribute("data-action");
-  if (action === "close") api.close();
-  else if (action === "settings") setView("settings");
+  if (action === "close") {
+    // 关面板时把朗读一起停掉：否则窗口都没了声音还在念，很吓人
+    speech?.stop();
+    state.speaking = false;
+    api.close();
+  } else if (action === "settings") setView("settings");
   else if (action === "back") setView("translate");
   else if (action === "login") {
     api.showDeepSeek();
     flashHint("已打开网页窗口，请在那里登录");
   } else if (action === "reset-session") resetSession();
+  else if (action === "history") setHistoryOpen(true);
+  else if (action === "close-history") setHistoryOpen(false);
+  else if (action === "retry") {
+    // 断网/超时后点重试：先把这条提示压下去，再重新探一次后端状态。
+    // 真实的重连由下一次翻译触发（open() 会重新 loadURL），这里只给即时反馈。
+    if (state.banner !== null) state.dismissedBanners.add(state.banner.key);
+    renderBanner();
+    flashHint("正在重试…");
+    api.engineStatus().then((status) => {
+      if (status === null || status === undefined) return;
+      state.engine = { ...(state.engine ?? {}), status: status.status, detail: status.detail, code: status.code };
+      // 换了一轮，之前的「已忽略」清掉，让新的失败还能再弹出来
+      state.dismissedBanners.clear();
+      render();
+    });
+  }
+});
+
+// 提示条上的叉：记住这一条别再弹
+bannerCloseEl.addEventListener("click", () => {
+  if (state.banner !== null) state.dismissedBanners.add(state.banner.key);
+  renderBanner();
+});
+
+/* ── 历史抽屉的交互 ───────────────────────────────────────────────────── */
+
+// 点一条历史：回填原文 + 直接重译。
+// 抽屉本身不关 —— 用户可能是想连着看几条，关了他还得再点开。
+historyListEl.addEventListener("click", (event) => {
+  const target = event.target instanceof Element ? event.target : null;
+  if (target === null) return;
+
+  const delId = target.closest("[data-history-delete]")?.getAttribute("data-history-delete");
+  if (delId !== null && delId !== undefined) {
+    event.stopPropagation();
+    api.historyRemove(delId).then((result) => {
+      renderHistory(result?.entries ?? [], Number(result?.total) || 0);
+    });
+    return;
+  }
+
+  const item = target.closest("[data-id]");
+  if (item === null) return;
+  const id = item.getAttribute("data-id");
+  const entry = historyCache.find((row) => row.id === id);
+  if (entry === undefined) return;
+  // 回填就是「当成一次新的翻译请求」：切到划词模式显示原文，再翻一遍拿最新结果
+  setMode("pick", { silent: true, focus: false });
+  setHistoryOpen(false);
+  translate(entry.src);
+});
+
+// 搜索：输入即过滤（本地已经在内存里，不用等网络）
+historySearchEl.addEventListener("input", () => {
+  refreshHistory();
+});
+
+// 清空：二次确认
+historyClearEl.addEventListener("click", async () => {
+  const ok = window.confirm("清空全部翻译历史？这条操作没法撤销。");
+  if (!ok) return;
+  const result = await api.historyClear();
+  renderHistory(result?.entries ?? [], 0);
+  flashHint("历史已清空");
+});
+
+// 设置里的历史开关
+historyEnabledEl.addEventListener("change", async () => {
+  const result = await api.setHistoryEnabled(historyEnabledEl.checked);
+  state.historyEnabled = result?.enabled === true;
+  if (!state.historyEnabled) {
+    flashHint("已关闭历史记录，并清空了已有记录");
+  }
+  render();
 });
 
 // Esc：翻译中 = 取消；否则关面板
@@ -890,8 +1244,31 @@ api.onTranslateRequest((payload) => {
 
 api.onEngineStatus((status) => {
   if (status === null || status === undefined) return;
-  state.engine = { ...(state.engine ?? {}), status: status.status, detail: status.detail };
+  state.engine = {
+    ...(state.engine ?? {}),
+    status: status.status,
+    detail: status.detail,
+    code: status.code,
+  };
   render();
+});
+
+// 主进程主动弹的提示（比如第二次双击 exe 时告诉你「已经在运行了」）。
+// 这是一次性的，只闪一下：不写进 state.banner，免得被下一次 render 冲掉或反过来粘住。
+api.onNotice((notice) => {
+  if (notice === null || notice === undefined) return;
+  const text = String(notice.text ?? "");
+  if (text === "") return;
+  bannerEl.hidden = false;
+  bannerEl.dataset.tone = String(notice.tone ?? "info");
+  bannerTextEl.textContent = text;
+  bannerActionEl.hidden = true;
+  delete bannerActionEl.dataset.action;
+  clearTimeout(noticeTimer);
+  noticeTimer = window.setTimeout(() => {
+    // 到点收掉，并把控制权还给「按后端状态自动决定的提示条」
+    render();
+  }, 2600);
 });
 
 /* ── 启动 ─────────────────────────────────────────────────────────────── */
@@ -909,6 +1286,15 @@ api.info().then((info) => {
   if (typeof info?.ballColor === "string") state.ballColor = info.ballColor;
   if (typeof info?.textColor === "string") state.textColor = info.textColor;
   if (typeof info?.outFontSize === "number") applyOutFont(info.outFontSize);
+  if (typeof info?.speechRate === "number") {
+    state.speechRate = info.speechRate;
+    speechRateEl.value = String(info.speechRate);
+    speechRateValueEl.textContent = `${info.speechRate.toFixed(1)}x`;
+  }
+  if (typeof info?.historyEnabled === "boolean") {
+    state.historyEnabled = info.historyEnabled;
+    historyEnabledEl.checked = info.historyEnabled;
+  }
   if (typeof info?.eyesFollow === "boolean") state.eyesFollow = info.eyesFollow;
   if (typeof info?.idleGestures === "boolean") state.idleGestures = info.idleGestures;
 
@@ -923,5 +1309,22 @@ api.info().then((info) => {
   applyPanelLook(state.panelColor, state.panelOpacity);
   applyTextLook();
   render();
+
+  // 语音包探测：Windows 上语音包经常没装，先探明白，好决定要不要提示用户。
+  // 这里**只判「有没有任何语音包」**，不判具体语言 —— 启动时还没有译文，
+  // 拿空文本去判语言会一律判成英文，说反话。具体语言是否齐全，点朗读时才判。
+  if (speech !== null && speech.supported()) {
+    speech.loadVoices().then((voices) => {
+      state.speechReady = voices.length > 0;
+      if (voices.length === 0) {
+        speechNoteEl.hidden = false;
+        speechNoteEl.textContent = "系统里一个语音包都没有，朗读会没声音。Windows：设置 → 时间和语言 → 语音 → 添加语音。";
+      } else {
+        speechNoteEl.hidden = true;
+      }
+      render();
+    });
+  }
+
   console.log(`[panel] ready engine=${state.engine?.id ?? "?"}`);
 });

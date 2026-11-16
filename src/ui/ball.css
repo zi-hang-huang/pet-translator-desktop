@@ -390,6 +390,226 @@ html[data-drag="1"] .ball {
   cursor: grabbing;
 }
 
+/* 提示条：夹在标题栏和正文之间。三档色调，由 data-tone 决定。
+   **底色一律用不透明的实色**，不跟随面板配色 —— 面板可以是深色也可以是
+   浅色预设，半透明红底配浅红字在浅色面板上根本看不清（截图里验证过）。 */
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 6px 9px;
+  font-size: var(--tr-fs-small);
+  border-bottom: var(--tr-divider);
+  background: #1c3f66;
+  color: #d6e9ff;
+}
+
+.banner[hidden] {
+  display: none;
+}
+
+.banner[data-tone="warn"] {
+  background: #6b4a12;
+  color: #ffe3b0;
+}
+
+.banner[data-tone="bad"] {
+  background: #7a2620;
+  color: #ffe1e1;
+}
+
+.banner[data-tone="info"] {
+  background: #1c3f66;
+  color: #d6e9ff;
+}
+
+.banner-text {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.4;
+}
+
+.banner-action {
+  flex: none;
+  border: var(--tr-btn-ghost-border);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--tr-fs-label);
+  padding: 2px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.banner-action[hidden] {
+  display: none;
+}
+
+.banner-action:hover {
+  background: var(--tr-btn-ghost-hover);
+}
+
+.banner-close {
+  flex: none;
+  padding: 1px 4px;
+  font-size: 11px;
+}
+
+/* ── 历史抽屉 ───────────────────────────────────────────────────────────
+   盖在翻译视图上面，而不是切视图：切视图会丢掉「正在翻译」的状态。
+   位置相对 .view，铺满整个面板本体。 */
+.drawer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--tr-panel-bg);
+  border-radius: var(--tr-panel-radius);
+  z-index: 5;
+}
+
+.drawer[hidden] {
+  display: none;
+}
+
+.drawer-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 8px 9px;
+  border-bottom: var(--tr-divider);
+  font-size: var(--tr-fs-small);
+}
+
+.drawer-title {
+  flex: 1;
+  font-weight: 600;
+  color: var(--tr-text-strong);
+}
+
+.drawer-count {
+  color: var(--tr-text-muted);
+  font-size: var(--tr-fs-label);
+}
+
+.ghost.mini {
+  border: var(--tr-btn-ghost-border);
+  background: transparent;
+  color: var(--tr-text-soft);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--tr-fs-label);
+  padding: 2px 7px;
+  border-radius: 6px;
+}
+
+.ghost.mini:hover {
+  background: var(--tr-btn-ghost-hover);
+}
+
+.drawer-search {
+  flex: none;
+  padding: 6px 9px;
+  border-bottom: var(--tr-divider);
+}
+
+.drawer-search input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 8px;
+  border-radius: var(--tr-ctrl-radius);
+  border: var(--tr-input-border);
+  background: var(--tr-input-bg);
+  color: var(--tr-text);
+  font: inherit;
+  font-size: var(--tr-fs-small);
+  outline: none;
+}
+
+.drawer-search input:focus {
+  border: var(--tr-input-border-focus);
+}
+
+.drawer-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 9px 10px;
+}
+
+.history-item {
+  position: relative;
+  padding: 6px 7px;
+  margin-bottom: 6px;
+  border-radius: var(--tr-block-radius);
+  background: var(--tr-src-bg);
+  cursor: pointer;
+}
+
+.history-item:hover {
+  background: var(--tr-out-bg);
+}
+
+.history-src {
+  color: var(--tr-text-soft);
+  font-size: var(--tr-fs-small);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.history-out {
+  color: var(--tr-text);
+  font-size: var(--tr-fs-small);
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.history-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: var(--tr-fs-label);
+  color: var(--tr-text-muted);
+}
+
+.history-meta .spacer {
+  flex: 1;
+}
+
+.history-del {
+  border: none;
+  background: transparent;
+  color: var(--tr-text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 3px;
+  border-radius: 4px;
+}
+
+.history-del:hover {
+  color: var(--tr-text-error);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.history-empty {
+  padding: 24px 8px;
+  text-align: center;
+  color: var(--tr-text-muted);
+  font-size: var(--tr-fs-small);
+  line-height: 1.6;
+}
+
 .head button,
 .head select {
   cursor: pointer;
@@ -443,6 +663,40 @@ html[data-drag="1"] .ball {
   font-size: var(--tr-fs-label);
   color: var(--tr-text-muted);
   letter-spacing: 0.03em;
+}
+
+/* 译文那一行的 label：左边标题、右边喇叭 */
+.label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.speak-btn {
+  border: none;
+  background: transparent;
+  color: var(--tr-text-soft);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 1px 5px;
+  border-radius: 5px;
+  flex: none;
+}
+
+.speak-btn[hidden] {
+  display: none;
+}
+
+.speak-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--tr-text);
+}
+
+/* 系统没对应语音包：按钮还在（点了能读，只是可能不准），但视觉上弱化 */
+.speak-btn[data-unavailable="1"] {
+  opacity: 0.55;
 }
 
 .src,

@@ -22,15 +22,41 @@
           <span class="lamp" id="lamp" data-status="off" title="后端状态"></span>
           <span class="title">翻译</span>
           <select class="select" id="target-top" title="目标语言"></select>
+          <button class="icon" type="button" data-action="history" title="翻译历史">🕘</button>
           <button class="icon" type="button" data-action="settings" title="设置">⚙</button>
           <button class="icon" type="button" data-action="close" title="关闭">✕</button>
         </header>
+
+        <!-- 历史抽屉：盖在翻译视图上面，不切视图（切视图会丢掉正在翻的状态） -->
+        <div class="drawer" id="history-drawer" hidden>
+          <div class="drawer-head">
+            <span class="drawer-title">翻译历史</span>
+            <span class="drawer-count" id="history-count"></span>
+            <button class="ghost mini" type="button" id="history-clear" title="清空全部历史">清空</button>
+            <button class="icon" type="button" data-action="close-history" title="关闭">✕</button>
+          </div>
+          <div class="drawer-search">
+            <input type="search" id="history-search" placeholder="搜原文或译文…" />
+          </div>
+          <div class="drawer-body" id="history-list"></div>
+        </div>
+
+        <!-- 提示条：登录过期 / 要人机验证 / 断网 / 二次启动 都在这里说一句。
+             平时 hidden，不需要它的时候完全不占位。 -->
+        <div class="banner" id="banner" hidden>
+          <span class="banner-text" id="banner-text"></span>
+          <button class="banner-action" type="button" id="banner-action" hidden></button>
+          <button class="icon banner-close" type="button" id="banner-close" title="先不管">✕</button>
+        </div>
 
         <div class="body">
           <div class="label" id="src-label">原文</div>
           <div class="src" id="src">在任意程序里选中文字，按 Ctrl+Alt+T 就会直接翻译。</div>
 
-          <div class="label" id="out-label">译文</div>
+          <div class="label label-row" id="out-label-row">
+            <span id="out-label">译文</span>
+            <button class="speak-btn" type="button" id="speak" title="朗读译文" hidden>🔊</button>
+          </div>
           <div class="out" id="out" title="点击复制译文">译文会出现在这里，点它即可复制。</div>
 
           <textarea
@@ -134,12 +160,31 @@
           </div>
           <p class="tip">只放大译文。原文块故意留小一号，扫一眼就知道自己在翻哪段。</p>
 
+          <div class="field">
+            <span>朗读语速</span>
+            <span class="range-wrap">
+              <input type="range" id="speech-rate" min="0.5" max="2" step="0.1" value="1" />
+              <span class="value" id="speech-rate-value">1.0x</span>
+            </span>
+          </div>
+          <p class="tip" id="speech-note" hidden></p>
+          <p class="tip">译文块右上角的小喇叭点了就朗读。语速只影响朗读。</p>
+
           <!-- 配色预设：一键换「面板底色 + 正文颜色 + 球颜色」，
                三个色值仍然分别存在下面两个颜色选择器里，预设只是快捷方式。 -->
           <div class="field field-col">
             <span>配色预设</span>
             <div class="presets" id="presets"></div>
           </div>
+
+          <div class="field">
+            <span>记录翻译历史</span>
+            <label class="switch">
+              <input type="checkbox" id="history-enabled" checked />
+              <span class="track"></span>
+            </label>
+          </div>
+          <p class="tip">存在本地（上限 200 条，只记原文/译文/时间），关掉会立刻清空已存的。</p>
 
           <div class="field">
             <span>眼睛跟随鼠标</span>
@@ -178,6 +223,7 @@
          放里面会被圆角裁掉一截，鼠标够不着。 -->
     <div class="resize-grip" id="resize-grip" title="拖动调整大小"></div>
 
+    <script src="speech.js"></script>
     <script src="panel.js"></script>
   </body>
 </html>
