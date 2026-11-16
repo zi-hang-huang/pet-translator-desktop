@@ -137,6 +137,14 @@ Get-Process 翻译球 -ErrorAction SilentlyContinue
 **PowerShell 变量名不区分大小写。** `param($Exe)` 和局部 `$exe` 是同一个变量，
 脚本里混用会得到莫名其妙的值（`e2e-pickup.ps1` 因此把参数改名 `-ExePath`）。
 
+**「翻译中」的转圈和「出错」的叉是画在 `.eye` 上的，不是画在球上的。**
+所以做「隐藏眼睛」这类开关时，直接 `html[data-eyes="off"] .eye { display:none }`
+会把状态反馈一起干掉 —— 用户关掉脸之后，程序在干什么就完全看不见了。
+`ball.css` 末尾那组 `data-eyes="off"` 规则里特意把 `[data-state="busy"]` /
+`[data-state="error"]` 两个状态重新 `display:block` 回来，改这块时别删。
+同理：笑脸的「弯眼」虽然是 SVG path，但它表达的是眼睛，跟 `data-eyes` 走，
+不跟 `data-mouth` 走。
+
 **`sendinput-helper.ps1` 必须存成 UTF-8 BOM。** PowerShell 5.1 否则按 GBK 读，
 中文注释会把语法撑爆。
 

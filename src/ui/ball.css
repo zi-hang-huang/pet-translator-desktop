@@ -1300,3 +1300,29 @@ html[data-mode="paste"] #src {
 html[data-resizing] .resize-grip {
   opacity: 0.9;
 }
+
+/* ── 五官开关 ────────────────────────────────────────────────────────
+   写在 html 的属性上（data-eyes / data-mouth），和 data-state、data-gesture
+   是同一层，互相不覆盖。用 display:none 而不是 opacity —— 关掉就是彻底不占位、
+   也不参与眨眼/表情动画，省得藏起来的眼睛还在后台跑 keyframes。
+
+   两个例外要留着：「翻译中」的转圈和「出错」的叉本来就是用 .eye 画出来的，
+   它们不是脸，是状态反馈 —— 眼睛关了也得让人知道在干活/挂了。
+   「弯眼」那两条弧线虽然放在 .mouth 这张 SVG 里，表达的却是眼睛（笑成 ∩∩），
+   所以它跟 data-eyes 走，不跟 data-mouth 走。 */
+html[data-eyes="off"] .eye {
+  display: none;
+}
+
+html[data-eyes="off"][data-state="busy"] .eye,
+html[data-eyes="off"][data-state="error"] .eye {
+  display: block;
+}
+
+html[data-eyes="off"] .mouth path.happy-eye {
+  display: none !important;
+}
+
+html[data-mouth="off"] #mouth-path {
+  display: none !important;
+}

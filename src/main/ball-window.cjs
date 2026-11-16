@@ -194,6 +194,12 @@ function setPinnedHook(hook) {
   state.pinnedHook = hook;
 }
 
+/** 右键菜单里切「显示眼睛 / 显示嘴」，走和面板开关同一条路。 */
+function toggleFacePart(part, visible) {
+  store.write(part === "eyes" ? { eyesVisible: visible } : { mouthVisible: visible });
+  pushLook();
+}
+
 /**
  * 缩放，保持球心不动。
  * @param {number} next @param {{persist?: boolean}} [options]
@@ -298,6 +304,8 @@ function pushLook() {
   window.webContents.send("ball:look", {
     ballColor: saved.ballColor,
     eyesFollow: saved.eyesFollow === true,
+    eyesVisible: saved.eyesVisible !== false,
+    mouthVisible: saved.mouthVisible !== false,
     idleGestures: saved.idleGestures === true,
   });
 }
@@ -338,6 +346,19 @@ function showContextMenu() {
       click: (item) => applyPinned(item.checked),
     },
     { type: "separator" },
+    // 五官开关也放到这里：不用开面板就能快速去掉脸，想留个干净的球时最顺手
+    {
+      label: "显示眼睛",
+      type: "checkbox",
+      checked: store.read().eyesVisible !== false,
+      click: (item) => toggleFacePart("eyes", item.checked),
+    },
+    {
+      label: "显示嘴",
+      type: "checkbox",
+      checked: store.read().mouthVisible !== false,
+      click: (item) => toggleFacePart("mouth", item.checked),
+    },
     { label: "隐藏球", click: () => window.hide() },
     { label: "退出", click: () => app.quit() },
   ]);
@@ -410,6 +431,7 @@ module.exports = {
   setPanelHooks,
   setPinnedHook,
   pushLook,
+  toggleFacePart,
   showContextMenu,
   snapshot,
   allowClose,

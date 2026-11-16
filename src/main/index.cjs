@@ -385,6 +385,18 @@ function wireIpc() {
     return { enabled: enabled === true };
   });
 
+  ipcMain.handle("settings:set-eyes-visible", (_event, enabled) => {
+    store.write({ eyesVisible: enabled === true });
+    ball.pushLook();
+    return { enabled: enabled === true };
+  });
+
+  ipcMain.handle("settings:set-mouth-visible", (_event, enabled) => {
+    store.write({ mouthVisible: enabled === true });
+    ball.pushLook();
+    return { enabled: enabled === true };
+  });
+
   ipcMain.handle("settings:set-idle-gestures", (_event, enabled) => {
     store.write({ idleGestures: enabled === true });
     ball.pushLook();
@@ -482,6 +494,8 @@ function wireIpc() {
     speechRate: store.read().speechRate,
     historyEnabled: store.read().historyEnabled !== false,
     eyesFollow: store.read().eyesFollow === true,
+    eyesVisible: store.read().eyesVisible !== false,
+    mouthVisible: store.read().mouthVisible !== false,
     idleGestures: store.read().idleGestures === true,
   }));
 }

@@ -50,6 +50,8 @@ const outFontEl = document.getElementById("out-font");
 const outFontValueEl = document.getElementById("out-font-value");
 const presetsEl = document.getElementById("presets");
 const eyesFollowEl = document.getElementById("eyes-follow");
+const eyesVisibleEl = document.getElementById("eyes-visible");
+const mouthVisibleEl = document.getElementById("mouth-visible");
 const idleGesturesEl = document.getElementById("idle-gestures");
 
 const targetTopEl = document.getElementById("target-top");
@@ -144,6 +146,9 @@ const state = {
   /** 是否记录本地历史。 */
   historyEnabled: true,
   eyesFollow: true,
+  /** 是否显示眼睛 / 嘴（各自独立）。 */
+  eyesVisible: true,
+  mouthVisible: true,
   /** 待命时球自己玩（眨眼/张望/偷笑/打哈欠/睡着）。 */
   idleGestures: true,
   ignoring: false,
@@ -500,6 +505,8 @@ function render() {
   ballColorEl.value = state.ballColor;
   textColorEl.value = state.textColor;
   eyesFollowEl.checked = state.eyesFollow === true;
+  eyesVisibleEl.checked = state.eyesVisible !== false;
+  mouthVisibleEl.checked = state.mouthVisible !== false;
   idleGesturesEl.checked = state.idleGestures === true;
 
 
@@ -1149,6 +1156,18 @@ eyesFollowEl.addEventListener("change", async () => {
   render();
 });
 
+eyesVisibleEl.addEventListener("change", async () => {
+  const result = await api.setEyesVisible(eyesVisibleEl.checked);
+  state.eyesVisible = result?.enabled === true;
+  render();
+});
+
+mouthVisibleEl.addEventListener("change", async () => {
+  const result = await api.setMouthVisible(mouthVisibleEl.checked);
+  state.mouthVisible = result?.enabled === true;
+  render();
+});
+
 idleGesturesEl.addEventListener("change", async () => {
   const result = await api.setIdleGestures(idleGesturesEl.checked);
   state.idleGestures = result?.enabled === true;
@@ -1481,6 +1500,8 @@ api.info().then((info) => {
     historyEnabledEl.checked = info.historyEnabled;
   }
   if (typeof info?.eyesFollow === "boolean") state.eyesFollow = info.eyesFollow;
+  if (typeof info?.eyesVisible === "boolean") state.eyesVisible = info.eyesVisible;
+  if (typeof info?.mouthVisible === "boolean") state.mouthVisible = info.mouthVisible;
   if (typeof info?.idleGestures === "boolean") state.idleGestures = info.idleGestures;
 
   // 上次选的模式：先落属性再首次渲染，避免界面先闪一下另一种布局

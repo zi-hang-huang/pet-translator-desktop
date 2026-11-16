@@ -84,6 +84,10 @@ contextBridge.exposeInMainWorld("petPanel", {
   /** @param {boolean} enabled */
   setEyesFollow: (enabled) => ipcRenderer.invoke("settings:set-eyes-follow", enabled),
   /** @param {boolean} enabled */
+  setEyesVisible: (enabled) => ipcRenderer.invoke("settings:set-eyes-visible", enabled),
+  /** @param {boolean} enabled */
+  setMouthVisible: (enabled) => ipcRenderer.invoke("settings:set-mouth-visible", enabled),
+  /** @param {boolean} enabled */
   setIdleGestures: (enabled) => ipcRenderer.invoke("settings:set-idle-gestures", enabled),
 
   /* ── 本地历史 ─────────────────────────────────────────────────────── */

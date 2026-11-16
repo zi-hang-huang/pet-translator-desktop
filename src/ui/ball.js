@@ -41,6 +41,9 @@ const BLACK = [0, 0, 0];
 const state = {
   scale: 1,
   eyesFollow: true,
+  /** 是否显示眼睛 / 嘴。关掉只是 CSS 不画，不改任何状态机。 */
+  eyesVisible: true,
+  mouthVisible: true,
   ballColor: DEFAULT_BALL,
   ignoring: false,
   lastPassCheck: 0,
@@ -401,8 +404,17 @@ api.onScale((scale) => {
   state.scale = scale;
 });
 
+/** 把「显示眼睛 / 显示嘴」落到 html 属性上，CSS 才认。
+ *  用 !== false 判：老 settings.json 里没这两个键时按「显示」处理。 */
+function applyFaceVisibility() {
+  root.dataset.eyes = state.eyesVisible !== false ? "on" : "off";
+  root.dataset.mouth = state.mouthVisible !== false ? "on" : "off";
+}
+
 api.onLook((look) => {
   if (typeof look?.ballColor === "string") state.ballColor = look.ballColor;
+  if (typeof look?.eyesVisible === "boolean") state.eyesVisible = look.eyesVisible;
+  if (typeof look?.mouthVisible === "boolean") state.mouthVisible = look.mouthVisible;
   if (typeof look?.eyesFollow === "boolean") {
     state.eyesFollow = look.eyesFollow;
     if (!state.eyesFollow) resetEyes();
@@ -416,6 +428,7 @@ api.onLook((look) => {
       wake();
     }
   }
+  applyFaceVisibility();
   applyBallLook();
   updateEyes();
 });
@@ -431,7 +444,10 @@ api.onCursor((point) => {
 api.info().then((info) => {
   if (typeof info?.ballColor === "string") state.ballColor = info.ballColor;
   if (typeof info?.eyesFollow === "boolean") state.eyesFollow = info.eyesFollow;
+  if (typeof info?.eyesVisible === "boolean") state.eyesVisible = info.eyesVisible;
+  if (typeof info?.mouthVisible === "boolean") state.mouthVisible = info.mouthVisible;
   if (typeof info?.idleGestures === "boolean") mood.enabled = info.idleGestures;
+  applyFaceVisibility();
   applyBallLook();
   console.log(
     `[ball] ready scale=${String(info?.scale ?? "?")} eyes=${String(state.eyesFollow)} gestures=${String(mood.enabled)}`,
