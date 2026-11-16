@@ -824,10 +824,16 @@ if (!app.requestSingleInstanceLock()) {
 
     // 取词用的按键器现在就预热：它要加载 System.Windows.Forms，第一次要一两百毫秒
     pickup.warmUp();
-    // OCR 引擎同样预热：tesseract.js 第一次要解压语言模型 + 创建 worker，约 0.5~2s
-    // 解压后的模型缓存放 userData 下，跨重启就不再重复解压
+    // OCR 引擎同样预热：tesseract.js 首次会解压语言模型 + 创建 worker，约 0.5~2s。
+    // 放在后台 warmUp，别等用户第一次截图才现起；之后同一进程内是热引擎，单次 150~350ms。
+    // （实测 tesseract.js 在 Node/Electron 下不把解压模型落盘，故每次启动仍有一次冷启，
+    //  这里传 cachePath 只为将来版本支持持久缓存时能直接用上，不影响正确性。）
     ocr.init({ cachePath: join(app.getPath("userData"), "ocr-cache") });
     ocr.warmUp();
+    // 后台等引擎就绪后打一行日志：方便排障时确认 OCR 到底起没起来
+    ocr.status().then((s) => {
+      console.log(`[pet-tr] ocr ${s.ok ? "ready" : "FAILED"} · ${(s.langs || []).join("+") || "-"}${s.detail ? " · " + s.detail : ""}`);
+    });
 
     // 开机自启：只在打包版里真正写启动项，开发模式只回一句"没应用"
     const autostartState = autostart.apply();

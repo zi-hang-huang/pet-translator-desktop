@@ -56,7 +56,11 @@ const state = {
   /** @type {Promise<any> | null} */ creating: null,
   /** 单次识别的串行闸门：worker 一次只处理一条。 */
   /** @type {Promise<any>} */ queue: Promise.resolve(),
-  /** 解压后语言模型的缓存目录（放临时目录，别污染用户配置目录）。 */
+  /**
+   * 解压后语言模型的缓存目录。实测 tesseract.js 在 Node/Electron 下不会真把解压结果
+   * 写盘（无持久 fs 缓存适配器），所以它目前只是「不影响正确性的占位参数」，留着是为了
+   * 将来 tesseract.js 支持持久缓存时能直接用上。默认放临时目录，别污染用户配置目录。
+   */
   cachePath: join(tmpdir(), "pet-tr-ocr-cache"),
   disposed: false,
   /** 最近一次失败的技术细节，供面板诊断。 */
@@ -64,7 +68,7 @@ const state = {
 };
 
 /**
- * 可选初始化：注入缓存目录（App 启动时会传 userData 下的子目录，跨重启更快）。
+ * 可选初始化：注入缓存目录（等 tesseract.js 将来支持持久缓存时，放 userData 下更规整）。
  * @param {{cachePath?: string}} [options]
  */
 function init(options) {
