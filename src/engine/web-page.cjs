@@ -212,6 +212,57 @@ async function waitForReply(beforeCount, beforeText, prompt, shouldAbort) {
 }
 
 /**
+ * 把提示词发出去，并确认「页面上真的出现了新消息」。
+ *
+ * 之前每个调用点都只发一次、只给一次重判机会，遇到底下两种情况就误报「消息没有发出去」：
+ *   1. **发送键还没就绪**（尤其图片上传期间是 disabled）——点击落到了别的按钮上；
+ *   2. 点击其实生效了，但气泡**渲染比 320ms/1.8s 慢**，被判成没发出去。
+ *
+ * 现在：
+ *   - `scripts.send()` 自己会轮询等发送键真正可用再点（见 page-scripts.cjs 的 send）；
+ *   - 这里看**输入框清没清空**来区分两种失败：
+ *       · 清空了 = 点击已生效，只是还没渲染 → 多等最多 ~6 秒，绝不重复发；
+ *       · 没清空 = 真没发出去 → 隔 1.2 秒重发，最多 3 轮。
+ *
+ * @param {string} prompt - 我们发的提示词（这里只用于日志，实际判定靠 baseline 对比）。
+ * @param {number} baseline - 发送前的消息条数。
+ * @param {string} baselineText - 发送前最后一条消息正文。
+ * @returns {Promise<{sent: any, visible: any}>}
+ */
+async function sendPrompt(prompt, baseline, baselineText) {
+  const grew = (snap) =>
+    Number(snap?.count ?? 0) > baseline || String(snap?.text ?? "").trim() !== baselineText;
+
+  let lastSent = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    lastSent = await deepseek.run(scripts.send());
+    await wait(700);
+    let visible = await deepseek.run(scripts.read());
+    if (grew(visible)) return { sent: lastSent, visible };
+
+    if (lastSent?.cleared === true) {
+      // 点击已生效（输入框被清空），只是气泡渲染慢 / 服务端排队。
+      // 这种情况**绝不能重发**（重发只会点空输入框，还可能打断生成），
+      // 耐心轮询最多 ~20 秒等它冒出来。
+      for (let i = 0; i < 26; i += 1) {
+        await wait(750);
+        visible = await deepseek.run(scripts.read());
+        if (grew(visible)) return { sent: lastSent, visible };
+      }
+      // 20 秒仍无任何新气泡：判为真失败，交给外层报错（不再空转重发）
+      break;
+    }
+
+    // 输入框还有字：确实没发出去（按钮没就绪/点到别处），等按钮就绪后重发。
+    await wait(1200);
+  }
+  throw fail(
+    "send-failed",
+    `消息没有发出去（${lastSent?.how ?? "?"}，输入框剩 ${lastSent?.remaining ?? "?"} 字）`,
+  );
+}
+
+/**
  * 翻一段文字。
  * @param {string} text - 原文。
  * @param {{target?: string, onProgress?: (stage: string) => void}} [options]
@@ -274,23 +325,7 @@ async function translate(text, options = {}) {
   );
 
   progress("send");
-  const sent = await deepseek.run(scripts.send());
-
-  // 「发出去了没有」的判据是**页面上出现了新消息**，不是 send() 的返回值。
-  // 新开对话时页面要先建会话再清空输入框，可能比我们的 320ms 慢半拍 ——
-  // 那种情况 send() 会报"没清空"，但消息其实已经发出去了。
-  await wait(700);
-  let visible = await deepseek.run(scripts.read());
-  const grew = () =>
-    Number(visible?.count ?? 0) > baseline || String(visible?.text ?? "").trim() !== baselineText;
-
-  if (!grew()) {
-    await wait(1800);
-    visible = await deepseek.run(scripts.read());
-  }
-  if (!grew()) {
-    throw fail("send-failed", `消息没有发出去（${sent?.how ?? "?"}，输入框剩 ${sent?.remaining ?? "?"} 字）`);
-  }
+  const { sent, visible } = await sendPrompt(prompt, baseline, baselineText);
   console.log(`[pet-tr] sent via ${String(sent?.how ?? "?")} · count ${baseline} → ${String(visible?.count ?? "?")}`);
 
   progress("wait");
@@ -461,18 +496,8 @@ async function translateImage(imagePath, options = {}) {
   );
 
   progress("send");
-  const sent = await deepseek.run(scripts.send());
-  await wait(700);
-  let visible = await deepseek.run(scripts.read());
-  const grew = () =>
-    Number(visible?.count ?? 0) > baseline || String(visible?.text ?? "").trim() !== baselineText;
-  if (!grew()) {
-    await wait(1800);
-    visible = await deepseek.run(scripts.read());
-  }
-  if (!grew()) {
-    throw fail("send-failed", `消息没有发出去（${sent?.how ?? "?"}，输入框剩 ${sent?.remaining ?? "?"} 字）`);
-  }
+  const imageSent = await sendPrompt(prompt, baseline, baselineText);
+  console.log(`[pet-tr] sent(image) via ${String(imageSent.sent?.how ?? "?")} · count ${baseline} → ${String(imageSent.visible?.count ?? "?")}`);
 
   progress("wait");
   const reply = await waitForImageReply(prompt, shouldAbort);

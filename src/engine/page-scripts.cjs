@@ -175,7 +175,7 @@ function fill(text) {
   `;
 }
 
-/** @returns {string} 点发送。**点完还要看输入框有没有被清空**，没清就补一次回车。 */
+/** @returns {string} 点发送。**先等发送键真的可用**，点完看输入框有没有被清空，没清就补一次回车。 */
 function send() {
   return String.raw`
     (async () => {
@@ -183,34 +183,56 @@ function send() {
       ${FIND_SEND}
       if (composer === null) return { ok: false, reason: "no-composer" };
 
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
       const before = composer.value.length;
-      const found = findSendButton(composer);
+
+      // 等发送键就绪。**图片上传期间发送键是 disabled 的**，而 findSendButton 会把
+      // disabled 的按钮整个过滤掉 —— 于是它可能落到"附近最后一个可点按钮"（附件/模式键），
+      // 或者干脆返回 null。这正是「偶尔消息没发出去」的根因：点了不该点的键，然后被判失败。
+      // 所以这里轮询到「语义明确或主按钮候选」出现为止，最多等 4 秒（上传大图要时间）。
+      let found = { node: null, how: "none" };
+      for (let i = 0; i < 27; i += 1) {
+        found = findSendButton(composer);
+        // 只认可信来源：语义标签 / primary-circle；nearest 兜底仅在确实有内容时接受
+        const trustworthy = found.node !== null && (/label|primary/.test(found.how) || before > 0);
+        if (trustworthy) break;
+        await sleep(150);
+      }
+
       let how = "none";
       let target = "";
-
       if (found.node !== null) {
         how = found.how;
         target = labelOf(found.node).slice(0, 40);
-        found.node.click();
+        try { found.node.click(); } catch {}
       }
 
-      // 等页面把输入框清空 —— 清空才算真的发出去了。
-      // 会话里已经有历史消息时，点按钮偶尔不生效（按钮未就绪 / 事件没挂上），
-      // 这时候补一次回车，比让用户对着「翻译中…」等两分钟强。
-      const settle = () => new Promise((resolve) => setTimeout(resolve, 320));
-      await settle();
-      if (composer.value.length === 0) return { ok: true, how, target, cleared: true };
+      // 等输入框被清空 —— 清空才算真的发出去了。
+      // **轮询而不是只等 320ms**：带图片附件的消息，页面清空要更久；
+      // 老代码等 320ms 就判"没清空"再补回车，遇上慢的时候就变成重复发送。
+      const waitCleared = async (ms) => {
+        const until = Date.now() + ms;
+        while (Date.now() < until) {
+          if (composer.value.length === 0) return true;
+          await sleep(120);
+        }
+        return composer.value.length === 0;
+      };
 
+      if (await waitCleared(1600)) return { ok: true, how, target, cleared: true, remaining: 0 };
+
+      // 真的没清空（按钮未就绪 / 事件没挂上）→ 补一次回车
       const init = { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true };
+      composer.focus();
       composer.dispatchEvent(new KeyboardEvent("keydown", init));
       composer.dispatchEvent(new KeyboardEvent("keyup", init));
-      await settle();
+      const cleared2 = await waitCleared(1600);
 
       return {
-        ok: composer.value.length === 0 || before === 0,
+        ok: cleared2 || before === 0,
         how: found.node === null ? "enter" : how + "+enter",
         target,
-        cleared: composer.value.length === 0,
+        cleared: cleared2,
         remaining: composer.value.length,
       };
     })()
