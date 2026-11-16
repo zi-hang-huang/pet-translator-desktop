@@ -50,7 +50,10 @@
         </div>
 
         <div class="body">
-          <div class="label" id="src-label">原文</div>
+          <div class="label label-row" id="src-label-row">
+            <span id="src-label">原文</span>
+            <button class="speak-btn" type="button" id="speak-src" title="朗读原文" hidden>🔊</button>
+          </div>
           <div class="src" id="src">在任意程序里选中文字，按 Ctrl+Alt+T 就会直接翻译。</div>
 
           <div class="label label-row" id="out-label-row">
@@ -168,7 +171,7 @@
             </span>
           </div>
           <p class="tip" id="speech-note" hidden></p>
-          <p class="tip">译文块右上角的小喇叭点了就朗读。语速只影响朗读。</p>
+          <p class="tip">原文、译文块右上角的小喇叭点了就朗读。语速只影响朗读。</p>
 
           <!-- 配色预设：一键换「面板底色 + 正文颜色 + 球颜色」，
                三个色值仍然分别存在下面两个颜色选择器里，预设只是快捷方式。 -->

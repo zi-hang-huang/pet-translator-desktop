@@ -55,6 +55,7 @@ const targetSettingsEl = document.getElementById("target-settings");
 const scaleEl = document.getElementById("scale");
 const resizeGripEl = document.getElementById("resize-grip");
 const speakEl = /** @type {HTMLButtonElement} */ (document.getElementById("speak"));
+const speakSrcEl = /** @type {HTMLButtonElement} */ (document.getElementById("speak-src"));
 const speechRateEl = /** @type {HTMLInputElement} */ (document.getElementById("speech-rate"));
 const speechRateValueEl = document.getElementById("speech-rate-value");
 const speechNoteEl = document.getElementById("speech-note");
@@ -128,6 +129,8 @@ const state = {
   speechRate: 1,
   /** 当前是否正在朗读（决定喇叭按钮显示 🔊 还是 ⏹）。 */
   speaking: false,
+  /** 正在朗读的是哪一块："out"（译文）| "src"（原文）。共用一个语音通道。 */
+  speakingWho: /** @type {null | "out" | "src"} */ (null),
   /** 系统里到底有没有对应语言的语音包（没包就置灰 + 提示）。 */
   speechReady: false,
   /** 是否记录本地历史。 */
@@ -436,11 +439,22 @@ function render() {
   const canSpeak = state.result !== "" && !state.busy && speech !== null && speech.supported();
   speakEl.hidden = !canSpeak;
   if (canSpeak) {
-    speakEl.textContent = state.speaking ? "⏹" : "🔊";
-    speakEl.title = state.speaking
+    const outSpeaking = state.speaking && state.speakingWho === "out";
+    speakEl.textContent = outSpeaking ? "⏹" : "🔊";
+    speakEl.title = outSpeaking
       ? "停止朗读"
       : state.speechReady ? "朗读译文" : "朗读译文（系统可能没有该语言的语音包）";
     speakEl.dataset.unavailable = state.speechReady ? "0" : "1";
+  }
+
+  // 原文喇叭：有原文才露面。和译文共用一个语音通道，谁在读谁变停止符。
+  const canSpeakSrc = state.source !== "" && !state.busy && speech !== null && speech.supported();
+  speakSrcEl.hidden = !canSpeakSrc;
+  if (canSpeakSrc) {
+    const srcSpeaking = state.speaking && state.speakingWho === "src";
+    speakSrcEl.textContent = srcSpeaking ? "⏹" : "🔊";
+    speakSrcEl.title = srcSpeaking ? "停止朗读" : "朗读原文";
+    speakSrcEl.dataset.unavailable = "0";
   }
 
   goEl.disabled = state.busy;
@@ -742,6 +756,7 @@ async function translate(text) {
   if (state.speaking) {
     speech?.stop();
     state.speaking = false;
+    state.speakingWho = null;
   }
 
   state.busy = true;
@@ -815,37 +830,49 @@ async function onOutClick() {
  * 三个必须处理的现实情况：
  *   1. 正在读 → 再点一下停（不然长文读起来没法打断）
  *   2. 系统没语音包 → 仍然读（英文语音读中文不会崩），但要提示「发音可能不准」
- *   3. 「自动」档位 → 用译文自身的文字判语言，而不是拿目标语言档位猜
+ *   3. 原文用原文自身的文字判语言；译文按目标语言档位（「自动」时用译文文字判）
+ *
+ * 原文和译文共用一个语音通道（speechSynthesis 本身就只有一条），所以点哪块就
+ * 把另一块正在读的掐掉，谁在读谁那个喇叭变 ⏹。
+ *
+ * @param {"out" | "src"} who
  */
-function toggleSpeak() {
+function toggleSpeak(who = "out") {
   if (speech === null || !speech.supported()) {
     flashHint("这个环境不支持朗读");
     return;
   }
+  // 同一块再点 = 停；换一块读 = 先停掉旧的再读新的
   if (state.speaking) {
     speech.stop();
+    const wasSame = state.speakingWho === who;
     state.speaking = false;
+    state.speakingWho = null;
     render();
-    return;
+    if (wasSame) return;
   }
-  if (state.result === "") return;
 
-  const target = state.target === "auto" ? "auto" : state.target;
-  // 到这一刻才有真正的译文，才能判「这个语言的语音包到底有没有」
+  const text = who === "src" ? state.source : state.result;
+  if (text === "") return;
+  // 原文：按原文自身文字判断是什么语言；译文：按目标档位判（auto 时再看译文文字）
+  const target = who === "src" ? "auto" : state.target;
+
   const voices = window.speechSynthesis.getVoices();
-  const candidates = speech.langCandidates(target, state.result);
+  const candidates = speech.langCandidates(target, text);
   const ready = speech.hasVoiceFor(voices, candidates);
-  state.speechReady = ready;
+  if (who === "out") state.speechReady = ready;
 
-  const result = speech.speak(state.result, {
+  const result = speech.speak(text, {
     target,
     rate: state.speechRate,
     onEnd: () => {
       state.speaking = false;
+      state.speakingWho = null;
       render();
     },
     onError: (reason) => {
       state.speaking = false;
+      state.speakingWho = null;
       render();
       flashHint(`朗读失败：${reason}`);
     },
@@ -855,6 +882,7 @@ function toggleSpeak() {
     return;
   }
   state.speaking = true;
+  state.speakingWho = who;
   render();
   if (!ready) flashHint("系统没装该语言的语音包，读音可能不准（设置 → 时间和语言 → 语音）");
 }
@@ -902,7 +930,8 @@ scaleEl.addEventListener("change", () => api.setScale(Number(scaleEl.value)));
 
 goEl.addEventListener("click", submit);
 outEl.addEventListener("click", onOutClick);
-speakEl.addEventListener("click", toggleSpeak);
+speakEl.addEventListener("click", () => toggleSpeak("out"));
+speakSrcEl.addEventListener("click", () => toggleSpeak("src"));
 
 // 语速：拖动时本地生效，松手才落盘（跟字号一个套路，避免拖一次落几十次盘）
 speechRateEl.addEventListener("input", () => {
@@ -995,6 +1024,9 @@ autostartEl.addEventListener("change", async () => {
 async function resetSession() {
   const result = await api.resetSession();
   if (result?.ok === true) {
+    speech?.stop();
+    state.speaking = false;
+    state.speakingWho = null;
     state.source = "";
     state.result = "";
     state.error = "";
@@ -1014,6 +1046,7 @@ panelEl.addEventListener("click", (event) => {
     // 关面板时把朗读一起停掉：否则窗口都没了声音还在念，很吓人
     speech?.stop();
     state.speaking = false;
+    state.speakingWho = null;
     api.close();
   } else if (action === "settings") setView("settings");
   else if (action === "back") setView("translate");
