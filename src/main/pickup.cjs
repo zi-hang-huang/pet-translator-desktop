@@ -160,11 +160,22 @@ async function sendCtrlC() {
   }
   await wait(30); // 给焦点切换一点时间
 
-  try {
-    const reply = await command("ctrl+c");
-    if (reply === "ok") return true;
-  } catch {
-    // 落到一次性兜底
+  // 热键触发时用户的 Ctrl/Alt 往往还按着。helper 会先等它们松开，等不到就回
+  // "busy"（而不是硬发成 Ctrl+Alt+C）。这里收到 busy 就稍等再问，最多 3 轮
+  // （helper 每轮内部已等 ~0.9s，合计约 2.7s）；用户一松手当轮就会成功。
+  // 这也解释了「点球能翻、热键时好时坏」：松手快的那次侥幸成功，慢的就失败。
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const reply = await command("ctrl+c");
+      if (reply === "ok") return true;
+      if (reply === "busy") {
+        await wait(120);
+        continue;
+      }
+      break; // fail / unknown：交给一次性兜底
+    } catch {
+      break; // helper 没准备好，落到一次性兜底
+    }
   }
   return sendCtrlCOneShot();
 }
