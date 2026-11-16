@@ -1,4 +1,4 @@
-﻿# 绿色打包：把 App 装进 Electron 运行时，产出一个可双击的文件夹。
+# 绿色打包：把 App 装进 Electron 运行时，产出一个可双击的文件夹。
 #
 #     powershell -ExecutionPolicy Bypass -File scripts/pack.ps1
 #
@@ -20,7 +20,9 @@
 #           └─ assets\          ← 只带运行时要用的（tokens / tray / icon）
 
 param(
-  [string]$ElectronDist = "D:\document\FET\project_data\dsh\pet-translator\dsh-pet-translator\node_modules\electron\dist",
+  # 默认用本工程自己的 electron（源码搬到根目录后运行时就在这里）。
+  # 也可以 -ElectronDist 指定别的运行时。
+  [string]$ElectronDist = "",
   [string]$OutDir = "",
   # 只保留中英文语言包：locales 里几十个 .pak 每个约 1MB，全留纯属浪费
   [switch]$KeepAllLocales = $false
@@ -31,8 +33,19 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 if ($OutDir -eq "") { $OutDir = Join-Path $root "dist\翻译球" }
 
-if (-not (Test-Path $ElectronDist)) {
-  throw "找不到 Electron 运行时：$ElectronDist（用 -ElectronDist 指定）"
+# 没指定就从本工程 node_modules 找（源码在根目录后运行时就在这里）
+if ($ElectronDist -eq "") {
+  $candidates = @(
+    (Join-Path $root "node_modules\electron\dist"),
+    (Join-Path $root "_spike\node_modules\electron\dist")
+  )
+  foreach ($c in $candidates) {
+    if (Test-Path (Join-Path $c "electron.exe")) { $ElectronDist = $c; break }
+  }
+}
+
+if ($ElectronDist -eq "" -or -not (Test-Path $ElectronDist)) {
+  throw "找不到 Electron 运行时（试过 node_modules\electron\dist）。先 npm install，或用 -ElectronDist 指定。"
 }
 
 Write-Host "[pack] 源: $ElectronDist"
