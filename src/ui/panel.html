@@ -131,6 +131,14 @@
             </label>
           </div>
           <div class="field">
+            <span>截图翻译方式</span>
+            <select class="select" id="shot-mode">
+              <option value="vision">整图直翻（看图读字，推荐）</option>
+              <option value="ocr">先识别再翻（本地 OCR）</option>
+            </select>
+          </div>
+          <p class="tip" id="shot-mode-note">整图直翻：把截到的原图直接交给 DeepSeek 网页版，让它看图读字再翻译。暗底、手写、表格、中英混排都比本地 OCR 强。不需要 API Key。若想离线、不传图，可切到「先识别再翻」。</p>
+          <div class="field">
             <span>翻译引擎</span>
             <span class="value" id="engine-name">占位</span>
           </div>

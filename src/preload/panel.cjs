@@ -69,6 +69,12 @@ contextBridge.exposeInMainWorld("petPanel", {
    * @returns {Promise<{ok: boolean, status: object}>}
    */
   setHotkeyEnabled: (enabled, slot) => ipcRenderer.invoke("settings:set-hotkey-enabled", enabled, slot),
+  /**
+   * 切截图翻译的模式。
+   * @param {"vision" | "ocr"} mode - vision = 整图直翻；ocr = 先识别再翻。
+   * @returns {Promise<{ok: boolean, shotMode: string}>}
+   */
+  setShotMode: (mode) => ipcRenderer.invoke("settings:set-shot-mode", mode),
   /** @returns {Promise<object>} */
   autostartStatus: () => ipcRenderer.invoke("autostart:status"),
   /** @param {boolean} enabled */
@@ -109,8 +115,23 @@ contextBridge.exposeInMainWorld("petPanel", {
   ocrStatus: () => ipcRenderer.invoke("ocr:status"),
 
   /* ── 主进程推来的消息 ───────────────────────────────────────────────── */
-  /** 取到文字了，去翻译。@param {(payload: {text: string}) => void} handler */
+  /** @param {(payload: {text: string}) => void} handler */
   onTranslateRequest: (handler) => subscribe("translate:request", handler),
+  /**
+   * 整图直翻：开始（好把面板切到「翻译中」并清掉旧结果）。
+   * @param {(payload: {target?: string}) => void} handler
+   */
+  onImageStart: (handler) => subscribe("translate:image-start", handler),
+  /**
+   * 整图直翻：成功。
+   * @param {(payload: {source: string, text: string, ms: number}) => void} handler
+   */
+  onImageDone: (handler) => subscribe("translate:image-done", handler),
+  /**
+   * 整图直翻：失败（登录/验证/找不到输入框/图没传进去…）。
+   * @param {(payload: {code: string, detail: string}) => void} handler
+   */
+  onImageFailed: (handler) => subscribe("translate:image-failed", handler),
   /** OCR 失败（引擎没起来 / 这块没字）。@param {(payload: {reason: string, detail: string}) => void} handler */
   onOcrFailed: (handler) => subscribe("ocr:failed", handler),
   /** @param {(status: {status: string, detail: string}) => void} handler */

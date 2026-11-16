@@ -124,6 +124,38 @@ function diagnose() {
 }
 
 /**
+ * 看「图片挂在输入框上了没有」。
+ *
+ * 整图直翻的判据：注入成功后，DeepSeek 会把附件渲染成一张 `blob:` 缩略图，
+ * 并且 `<input type=file>` 的 `files` 不再为空。两者任一出现就算挂上了。
+ * 判断范围限定在输入框往上几层，别把页面里（比如历史消息里）的图当成附件。
+ */
+function attachments() {
+  return String.raw`
+    (() => {
+      const visible = (node) => node !== null && node !== undefined && node.offsetParent !== null;
+      const composers = [...document.querySelectorAll("textarea")].filter(visible);
+      const composer = composers.length === 0 ? null : composers[composers.length - 1];
+      let files = 0;
+      for (const input of document.querySelectorAll('input[type="file"]')) {
+        files += input.files ? input.files.length : 0;
+      }
+      let thumbs = 0;
+      if (composer !== null) {
+        let scope = composer;
+        for (let level = 0; level < 4 && scope !== null; level += 1) scope = scope.parentElement;
+        const root = scope ?? composer.parentElement ?? document;
+        for (const img of root.querySelectorAll("img")) {
+          const src = String(img.src || "");
+          if (src.startsWith("blob:") || src.startsWith("data:")) thumbs += 1;
+        }
+      }
+      return { files, thumbs, hasAttachment: files > 0 || thumbs > 0 };
+    })()
+  `;
+}
+
+/**
  * 把文字塞进输入框。
  * 必须走原生 setter 再补一个 input 事件 —— React 受控组件只认这条路，
  * 直接赋 value 页面内部状态不会更新，按发送也没内容。
@@ -214,4 +246,41 @@ function read() {
   `;
 }
 
-module.exports = { diagnose, fill, send, read };
+/**
+ * 读「我们这次提问对应的那条回复」——用提问气泡当锚点，取它后面第一条正文。
+ *
+ * 为什么不能用 `read()`（读最后一条）：实测发现两件事把「最后一条」搞坏了：
+ *   1. 消息列表**存在重复副本**（同一句话在 DOM 里出现两份，虚拟化/滚动锚定所致），
+ *      简单取 `nodes[nodes.length-1]` 会时对时错；
+ *   2. 复用会话里堆着很多历史回复，列表虚拟化时「最后一条」会在几条旧回复之间横跳。
+ * 两次叠加，曾把一次本应 8 秒的整图直翻拖成 120 秒，还把译文截成半句。
+ *
+ * 所以换成**锚点法**：找到含我们提示词开头（marker）的消息节点（取最后一个 = 最新的那份），
+ * 再往后找第一条既非空、又不含 marker（排除提问副本）的正文 —— 就是本次译文。
+ * 这和滚动位置、历史条数、副本顺序全都无关。
+ *
+ * @param {string} marker - 本次提示词开头的固定串。
+ */
+function readImageReply(marker) {
+  return String.raw`
+    (() => {
+      const pick = (node) => String((node.querySelector('[class*="ds-markdown"]') ?? node).innerText ?? "").trim();
+      const nodes = [...document.querySelectorAll(".ds-message")];
+      const marker = ${JSON.stringify(marker)};
+      let anchor = -1;
+      for (let i = 0; i < nodes.length; i += 1) {
+        if (pick(nodes[i]).includes(marker)) anchor = i;
+      }
+      if (anchor < 0) return { found: false, text: "", total: nodes.length };
+      for (let j = anchor + 1; j < nodes.length; j += 1) {
+        const text = pick(nodes[j]);
+        if (text === "") continue;
+        if (text.includes(marker)) continue; // 另一个提问副本，跳过
+        return { found: true, text, total: nodes.length };
+      }
+      return { found: true, text: "", total: nodes.length, pending: true };
+    })()
+  `;
+}
+
+module.exports = { diagnose, fill, send, read, attachments, readImageReply };

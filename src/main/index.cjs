@@ -193,8 +193,11 @@ async function onHotkey() {
 let shooting = false;
 
 /**
- * 截图 → 框选 → OCR → 翻译。和取词走同一条下游：一样是拿到一段文字后
- * 打开面板、发 translate:request。所以面板、历史、朗读、错误态全部自动复用。
+ * 截图 → 框选 → 翻译。两条下游：
+ *   - 整图直翻（默认，shotMode="vision"）：把截到的**原图**直接交给 DeepSeek 网页版，
+ *     让它看图读字再翻译。暗底/手写/表格/中英混排都吃得下，这是现在的默认。
+ *   - 先 OCR 再翻（shotMode="ocr"）：本地 OCR 出字后走文字翻译。离线可用、不传图。
+ * 两条都在框选成功后打开面板显示进度与结果，历史、朗读、错误态全部复用。
  */
 async function shotAndTranslate() {
   if (shooting) return;
@@ -210,6 +213,49 @@ async function shotAndTranslate() {
       return;
     }
 
+    const settings = store.read();
+    const target = typeof settings.target === "string" ? settings.target : "auto";
+    const mode = settings.shotMode === "ocr" ? "ocr" : "vision";
+    const canVision = typeof engine.translateImage === "function";
+
+    // ── 整图直翻 ──────────────────────────────────────────────────────
+    if (mode === "vision" && canVision) {
+      translating = true;
+      abortRequested = false;
+      clearTimeout(celebrateTimer);
+      ball.setState("busy");
+      openPanel();
+      sendToPanel("translate:image-start", { target });
+      try {
+        const result = await engine.translateImage(selected.imagePath, {
+          target,
+          shouldAbort: () => abortRequested,
+        });
+        const sourceLabel = "（截图 · 整图直翻）";
+        if (settings.historyEnabled !== false && typeof result?.text === "string" && result.text !== "") {
+          history.add({ src: sourceLabel, out: result.text, target, ms: Number(result.ms) || 0 });
+        }
+        ball.setState("done");
+        clearTimeout(celebrateTimer);
+        celebrateTimer = setTimeout(() => ball.setState("idle"), 1600);
+        pushEngineStatus();
+        sendToPanel("translate:image-done", { source: sourceLabel, text: result.text, ms: result.ms });
+      } catch (error) {
+        clearTimeout(celebrateTimer);
+        ball.setState("error");
+        setTimeout(() => ball.setState("idle"), 1600);
+        pushEngineStatus();
+        sendToPanel("translate:image-failed", {
+          code: error?.code ?? "unknown",
+          detail: String(error?.message ?? error),
+        });
+      } finally {
+        translating = false;
+      }
+      return;
+    }
+
+    // ── 先 OCR 再翻（降级 / 用户主动选的模式）───────────────────────────
     const recognized = await ocr.recognizeFile(selected.imagePath);
     if (recognized.ok !== true || recognized.text.trim() === "") {
       console.log(`[pet-tr] ocr failed: ${recognized.reason ?? "empty"} ${recognized.detail ?? ""}`);
@@ -453,6 +499,13 @@ function wireIpc() {
     return { ok: true, status: hotkey.status(slot) };
   });
 
+  /** 截图翻译模式："vision"（整图直翻）| "ocr"（先识别再翻）。 */
+  ipcMain.handle("settings:set-shot-mode", (_event, mode) => {
+    const next = mode === "ocr" ? "ocr" : "vision";
+    store.write({ shotMode: next });
+    return { ok: true, shotMode: next };
+  });
+
   /* ── 截图框选窗口回调 ─────────────────────────────────────────────── */
   ipcMain.handle("shot:commit", async (_event, rect) => {
     return shot.commitSelection(rect);
@@ -591,6 +644,7 @@ function wireIpc() {
     hotkeyEnabled: store.read().hotkeyEnabled !== false,
     shotHotkey: hotkey.status("shot"),
     shotHotkeyEnabled: store.read().shotHotkeyEnabled !== false,
+    shotMode: store.read().shotMode === "ocr" ? "ocr" : "vision",
     autostart: autostart.status(),
     panelOpen: panel.isVisible(),
     disableGpu: store.read().disableGpu === true,

@@ -313,6 +313,177 @@ async function translate(text, options = {}) {
 }
 
 /**
+ * 等**图片直翻**的回复。
+ *
+ * 用「锚点法」读译文（见 scripts.readImageReply 的注释）：以我们自己那条提问气泡为锚，
+ * 取它后面第一条正文。这样既不受历史消息干扰，也不受「最后一条在旧回复间横跳」影响，
+ * 还天然拿到**最新那份副本**，不会截成半句。
+ *
+ * 收尾判据：锁定（第一次读到非空且不含提问标记的正文）后，再观察 LOCK_WINDOW_MS，
+ * 期间继续用最新正文刷新候选；窗口一到就返回当前候选（此时模型早已写完）。
+ *
+ * @param {string} prompt - 我们发出去的提示词（取其开头做锚点）。
+ * @param {() => boolean} [shouldAbort]
+ * @returns {Promise<string>}
+ */
+async function waitForImageReply(prompt, shouldAbort) {
+  const started = Date.now();
+  const marker = prompt.slice(0, 12);
+  const LOCK_WINDOW_MS = 5000;
+  let candidate = "";
+  let lockedAt = 0;
+
+  while (Date.now() - started < 90_000) {
+    await wait(POLL_MS);
+    if (typeof shouldAbort === "function" && shouldAbort()) throw fail("aborted", "已取消");
+
+    const snapshot = await deepseek.run(scripts.readImageReply(marker));
+    const text = String(snapshot?.text ?? "").trim();
+    // found && !pending && 非空 = 锚点后面已经有正文了
+    if (snapshot?.found === true && text !== "") {
+      if (candidate === "") lockedAt = Date.now();
+      candidate = text;
+    }
+
+    if (candidate !== "" && Date.now() - lockedAt >= LOCK_WINDOW_MS) break;
+  }
+
+  if (candidate === "") throw fail("empty-reply", "等到了回复节点，但里面是空的");
+  return candidate;
+}
+
+/**
+ * 拼**图片**版提示词。和文字版不同：不需要 <text> 包裹，直接让模型看图翻译。
+ * @param {string} target
+ * @returns {string}
+ */
+function promptForImage(target) {
+  const rule =
+    target === "zh" ? "翻成简体中文"
+      : target === "en" ? "翻成英文"
+        : target === "ja" ? "翻成日文"
+          : "按图片内容的语言自动判断：非中文就翻成简体中文，中文就翻成英文";
+
+  return [
+    `你是翻译工具。把这张图片里的所有文字${rule}。`,
+    "规则：",
+    "1. 只输出译文，不要解释、不要加引号、不要包在代码块里；",
+    "2. 尽量保留原文的换行、段落和列表结构；",
+    "3. 专有名词、公式、代码、URL 原样保留；",
+    "4. 如果图里没有可翻译的文字，只回一句「（图里没有文字）」。",
+  ].join("\n");
+}
+
+/**
+ * 等图片真的挂到输入框上（出现 blob 缩略图或 file input 里有了文件）。
+ * @param {() => boolean} [shouldAbort]
+ * @returns {Promise<boolean>}
+ */
+async function waitForAttachment(shouldAbort) {
+  const started = Date.now();
+  while (Date.now() - started < 8000) {
+    if (typeof shouldAbort === "function" && shouldAbort()) throw fail("aborted", "已取消");
+    const snapshot = await deepseek.run(scripts.attachments());
+    if (snapshot?.hasAttachment === true) return true;
+    await wait(300);
+  }
+  return false;
+}
+
+/**
+ * 翻**一张图**（整图直翻）：把本地截图交给 DeepSeek 网页版，让它自己看图读字再翻译。
+ *
+ * 这条路比「OCR 出字再翻」强在：版式、字体、暗底、手写、表格、中英混排，
+ * 模型是看着原图理解的，不受本地 OCR 引擎的局限；代价是多花几秒等它读图。
+ *
+ * @param {string} imagePath - 截图落盘的本地 PNG 路径。
+ * @param {{target?: string, onProgress?: (stage: string) => void, shouldAbort?: () => boolean}} [options]
+ * @returns {Promise<{text: string, provider: string, ms: number}>}
+ */
+async function translateImage(imagePath, options = {}) {
+  const started = Date.now();
+  const progress = typeof options.onProgress === "function" ? options.onProgress : () => {};
+  const shouldAbort = options.shouldAbort;
+
+  if (typeof imagePath !== "string" || imagePath === "") {
+    throw fail("no-image", "没有拿到截图文件");
+  }
+
+  const sinceLast = Date.now() - lastFinishedAt;
+  if (sinceLast < MIN_INTERVAL_MS) await wait(MIN_INTERVAL_MS - sinceLast);
+
+  progress("open");
+  await deepseek.open();
+
+  progress("diagnose");
+  const diagnosis = await waitForComposer();
+  if (diagnosis?.captcha === true) {
+    throw fail("captcha", "DeepSeek 要人机验证了：点面板里的「打开 DeepSeek 窗口」过一下验证再翻");
+  }
+  if (diagnosis?.signedIn !== true) {
+    throw fail("need-login", "需要登录 DeepSeek：点面板里的「打开 DeepSeek 窗口」登录一次");
+  }
+  if (diagnosis?.hasComposer !== true) {
+    throw fail("no-composer", "页面上找不到输入框，DeepSeek 可能改版了（跑 scripts/probe-deepseek.cjs 看看）");
+  }
+
+  // 会话太长就换新的（同文字翻译，避免越翻越慢、上下文串味）
+  const expectHistory = String(diagnosis?.href ?? "").includes("/a/chat/s/");
+  let baseline = await waitForChatSettled(expectHistory, shouldAbort);
+  if (baseline >= SESSION_MAX_MESSAGES) {
+    console.log(`[pet-tr] 会话已有 ${baseline} 条消息，开新对话`);
+    await deepseek.reset();
+    const fresh = await waitForComposer();
+    if (fresh?.hasComposer !== true) throw fail("no-composer", "开新对话后找不到输入框，DeepSeek 可能改版了");
+    baseline = 0;
+  }
+
+  progress("attach");
+  const injected = await deepseek.setFileInput(imagePath);
+  if (injected?.ok !== true) {
+    throw fail("attach-failed", `图片没能放进输入框（${injected?.reason ?? "未知原因"}）`);
+  }
+  const attached = await waitForAttachment(shouldAbort);
+  if (!attached) {
+    throw fail("attach-failed", "图片传进去了，但页面没有出现附件缩略图，可能改版了");
+  }
+
+  progress("fill");
+  const prompt = promptForImage(options.target ?? "auto");
+  const filled = await deepseek.run(scripts.fill(prompt));
+  if (filled?.ok !== true) {
+    throw fail("fill-failed", `填字失败：${filled?.reason ?? "未知原因"}`);
+  }
+
+  const baselineText = String((await deepseek.run(scripts.read()))?.text ?? "").trim();
+  console.log(
+    `[pet-tr] deepseek(image) · ${String(diagnosis?.href ?? "?")} · messages=${baseline} · send=${String(diagnosis?.sendButton?.how ?? "?")}`,
+  );
+
+  progress("send");
+  const sent = await deepseek.run(scripts.send());
+  await wait(700);
+  let visible = await deepseek.run(scripts.read());
+  const grew = () =>
+    Number(visible?.count ?? 0) > baseline || String(visible?.text ?? "").trim() !== baselineText;
+  if (!grew()) {
+    await wait(1800);
+    visible = await deepseek.run(scripts.read());
+  }
+  if (!grew()) {
+    throw fail("send-failed", `消息没有发出去（${sent?.how ?? "?"}，输入框剩 ${sent?.remaining ?? "?"} 字）`);
+  }
+
+  progress("wait");
+  const reply = await waitForImageReply(prompt, shouldAbort);
+
+  const ms = Date.now() - started;
+  console.log(`[pet-tr] translated image → ${reply.length} chars in ${ms}ms`);
+  lastFinishedAt = Date.now();
+  return { text: reply, provider: "deepseek-vision", ms };
+}
+
+/**
  * 后端状态，给面板的状态灯用。
  * @returns {{status: "off" | "ok" | "warn" | "bad", detail: string, url: string}}
  */
@@ -337,6 +508,7 @@ function dispose() {
 
 module.exports = {
   translate,
+  translateImage,
   status,
   resetConversation,
   showWindow,

@@ -35,6 +35,13 @@ const DEFAULTS = Object.freeze({
   shotHotkey: "Ctrl+Alt+S",
   /** 截图翻译热键是否启用。 */
   shotHotkeyEnabled: true,
+  /**
+   * 截图翻译的模式：
+   *   "vision" — 整图直翻：把截到的原图直接交给 DeepSeek 网页版，让它看图读字再翻译。
+   *              暗底、手写、表格、中英混排都比本地 OCR 强。默认走这条。
+   *   "ocr"    — 先本地 OCR 出字、再翻文字。不走网络读图，离线也能用，但受 OCR 能力限制。
+   */
+  shotMode: "vision",
   /** 目标语言（M3 用）。 */
   target: "auto",
   /** 复用的 DeepSeek 专用会话地址（空表示还没建，按新对话处理）。 */

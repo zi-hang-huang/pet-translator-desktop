@@ -41,6 +41,7 @@ const hotkeyEnabledEl = document.getElementById("hotkey-enabled");
 const shotHotkeyValueEl = /** @type {HTMLButtonElement} */ (document.getElementById("shot-hotkey-value"));
 const shotHotkeyNoteEl = document.getElementById("shot-hotkey-note");
 const shotHotkeyEnabledEl = document.getElementById("shot-hotkey-enabled");
+const shotModeEl = /** @type {HTMLSelectElement} */ (document.getElementById("shot-mode"));
 const shotStartEl = /** @type {HTMLButtonElement} */ (document.getElementById("shot-start"));
 const autostartEl = document.getElementById("autostart");
 const autostartNoteEl = document.getElementById("autostart-note");
@@ -132,6 +133,8 @@ const state = {
   /** 截图翻译热键（独立于取词热键）。 */
   shotHotkey: null,
   shotHotkeyEnabled: true,
+  /** 截图翻译方式："vision" 整图直翻 | "ocr" 先识别再翻。 */
+  shotMode: /** @type {"vision" | "ocr"} */ ("vision"),
   /** 是否正在录制新热键（点一下按钮进入，按键后退出）。 */
   recordingHotkey: false,
   /** 正在录制的是哪个槽位："pick" | "shot"。 */
@@ -523,6 +526,7 @@ function render() {
     }
   }
   shotHotkeyEnabledEl.checked = state.shotHotkeyEnabled !== false;
+  shotModeEl.value = state.shotMode === "ocr" ? "ocr" : "vision";
 
   disableGpuEl.checked = state.disableGpu === true;
   panelColorEl.value = state.panelColor;
@@ -862,6 +866,14 @@ shotHotkeyEnabledEl.addEventListener("change", async () => {
 // 面板里的「截图」按钮：和截图热键同一条路
 shotStartEl?.addEventListener("click", () => {
   api.startShot();
+});
+
+// 截图翻译方式：整图直翻 / 先识别再翻
+shotModeEl.addEventListener("change", async () => {
+  const result = await api.setShotMode(shotModeEl.value);
+  state.shotMode = result?.shotMode === "ocr" ? "ocr" : "vision";
+  shotModeEl.value = state.shotMode;
+  flashHint(state.shotMode === "ocr" ? "截图：先本地识别再翻" : "截图：整图直翻");
 });
 
 /** @param {"translate" | "settings"} view */
@@ -1523,6 +1535,61 @@ api.onEngineStatus((status) => {
   render();
 });
 
+/* ── 整图直翻（截图 → DeepSeek 看图 → 译文）────────────────────────────── */
+
+/** 整图直翻开始：清掉旧结果、进「翻译中」，原文块标记为图片。 */
+api.onImageStart((payload) => {
+  if (state.speaking) {
+    speech?.stop();
+    state.speaking = false;
+    state.speakingWho = null;
+  }
+  setMode("pick", { silent: true, focus: false });
+  setView("translate");
+  state.busy = true;
+  state.error = "";
+  state.source = "📷 截图 · 看图直翻";
+  state.result = "";
+  state.elapsed = 0;
+  state.busySince = Date.now();
+  state.busySeconds = 0;
+  startBusyTicker();
+  render();
+});
+
+/** 整图直翻成功：填译文、收起「翻译中」。 */
+api.onImageDone((payload) => {
+  state.busy = false;
+  stopBusyTicker();
+  state.source = String(payload?.source ?? "📷 截图 · 看图直翻");
+  state.result = String(payload?.text ?? "").trim();
+  state.elapsed = (Number(payload?.ms) || 0) / 1000;
+  state.error = "";
+  if (state.result === "") {
+    state.error = "没有拿到译文，点译文区重试";
+  }
+  render();
+});
+
+/** 整图直翻失败：用错误块说清楚原因（登录 / 验证 / 图没进去…）。 */
+api.onImageFailed((payload) => {
+  state.busy = false;
+  stopBusyTicker();
+  const code = String(payload?.code ?? "unknown");
+  const detail = String(payload?.detail ?? "");
+  const map = {
+    "need-login": "需要登录 DeepSeek：进设置 → 打开 DeepSeek 窗口，登录一次",
+    captcha: detail || "DeepSeek 要人机验证了：进设置 → 打开 DeepSeek 窗口过一下验证",
+    "no-composer": "DeepSeek 页面找不到输入框，可能改版了",
+    "attach-failed": detail || "图片没能放进 DeepSeek 输入框，可能改版了",
+    "send-failed": detail || "消息没发出去，点译文区重试",
+    aborted: "已取消",
+  };
+  state.error = map[code] ?? (detail || `整图直翻失败（${code}）`);
+  if (state.source === "") state.source = "📷 截图 · 看图直翻";
+  render();
+});
+
 // 主进程主动弹的提示（比如第二次双击 exe 时告诉你「已经在运行了」）。
 // 这是一次性的，只闪一下：不写进 state.banner，免得被下一次 render 冲掉或反过来粘住。
 api.onNotice((notice) => {
@@ -1568,6 +1635,7 @@ api.info().then((info) => {
   if (typeof info?.hotkeyEnabled === "boolean") state.hotkeyEnabled = info.hotkeyEnabled;
   if (info?.shotHotkey !== undefined) state.shotHotkey = info.shotHotkey;
   if (typeof info?.shotHotkeyEnabled === "boolean") state.shotHotkeyEnabled = info.shotHotkeyEnabled;
+  if (info?.shotMode === "ocr" || info?.shotMode === "vision") state.shotMode = info.shotMode;
   if (info?.autostart !== undefined) state.autostart = info.autostart;
   if (info?.disableGpu !== undefined) state.disableGpu = info.disableGpu === true;
   if (typeof info?.panelColor === "string") state.panelColor = info.panelColor;

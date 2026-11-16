@@ -279,6 +279,92 @@ async function run(source, options = {}) {
 }
 
 /**
+ * 把一个本地图片文件交给页面上的 `<input type="file">`（整图直翻用）。
+ *
+ * 为什么不靠页面里合成 DataTransfer：那样要构造 File、拼合成事件，React 对
+ * `isTrusted` 敏感，时灵时不灵。走 Chromium 官方的 `DOM.setFileInputFiles`，
+ * 等价于用户手点「选择文件」，React 必须接；这条路已在真机上验过：
+ * 注入后输入框立刻冒出 blob 缩略图（见 scripts/probe-image-e2e.cjs）。
+ *
+ * **注入前**先确认页面上有 file input。DeepSeek 的输入框旁边常驻一个隐藏的
+ * `<input type=file multiple>`（accept 含 png/jpg/webp…），一般直接就能用；
+ * 万一改版拿掉了，退一步去点「上传/附件」按钮把它唤出来再试一次。
+ *
+ * @param {string} filePath - 本地图片绝对路径。
+ * @param {{timeoutMs?: number}} [options]
+ * @returns {Promise<{ok: boolean, reason?: string, nodeId?: number}>}
+ */
+async function setFileInput(filePath, options = {}) {
+  const window = state.window;
+  if (window === undefined || window.isDestroyed()) throw new Error("DeepSeek 窗口还没建起来");
+
+  const timeoutMs = options.timeoutMs ?? SCRIPT_TIMEOUT_MS;
+  const debugger_ = window.webContents.debugger;
+  let attachedHere = false;
+
+  /** 查一次文件输入节点 id；没有就返回 0。 */
+  const findInput = async () => {
+    const { root } = await debugger_.sendCommand("DOM.getDocument", { depth: 1 });
+    const { nodeId } = await debugger_.sendCommand("DOM.querySelector", {
+      nodeId: root.nodeId,
+      selector: 'input[type="file"]',
+    });
+    return nodeId || 0;
+  };
+
+  const work = (async () => {
+    if (!debugger_.isAttached()) {
+      debugger_.attach("1.3");
+      attachedHere = true;
+    }
+    let nodeId = await findInput();
+    if (!nodeId) {
+      // 兜底：点一下输入框附近标着「上传/附件/图片」的按钮，让隐藏 input 现形
+      await run(`
+        (() => {
+          const visible = (n) => n && n.offsetParent !== null;
+          const composers = [...document.querySelectorAll("textarea")].filter(visible);
+          const composer = composers.length ? composers[composers.length - 1] : null;
+          if (!composer) return false;
+          let scope = composer;
+          for (let i = 0; i < 4 && scope; i += 1) {
+            scope = scope.parentElement;
+            if (!scope) break;
+            for (const b of scope.querySelectorAll('button, [role="button"], label')) {
+              const label = String(b.getAttribute("aria-label") || b.getAttribute("title") || "") + " " + String(b.className || "");
+              if (/upload|attach|file|image|图片|附件|上传/i.test(label)) { b.click(); return true; }
+            }
+          }
+          return false;
+        })()
+      `).catch(() => false);
+      await new Promise((r) => setTimeout(r, 800));
+      nodeId = await findInput();
+    }
+    if (!nodeId) return { ok: false, reason: "no-file-input" };
+
+    await debugger_.sendCommand("DOM.setFileInputFiles", { files: [filePath], nodeId });
+    return { ok: true, nodeId };
+  })();
+
+  const timeout = new Promise((_resolve, reject) => {
+    setTimeout(() => reject(new Error(`注入图片超时（${Math.round(timeoutMs / 1000)}s）`)), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([work, timeout]);
+  } finally {
+    if (attachedHere) {
+      try {
+        if (debugger_.isAttached()) debugger_.detach();
+      } catch {
+        /* 已经没了 */
+      }
+    }
+  }
+}
+
+/**
  * 判断当前状态，给面板上的状态灯用。
  * @returns {{status: "off" | "ok" | "warn" | "bad", detail: string, url: string}}
  */
@@ -327,6 +413,7 @@ module.exports = {
   hide,
   reset: resetConversation,
   run,
+  setFileInput,
   status,
   alive,
   allowClose,
