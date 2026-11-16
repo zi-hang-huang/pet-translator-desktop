@@ -19,6 +19,7 @@ const hotkey = require("./hotkey.cjs");
 const pickup = require("./pickup.cjs");
 const autostart = require("./autostart.cjs");
 const log = require("./log.cjs");
+const { SCALES } = require("../shared/scales.cjs");
 const stubEngine = require("../engine/stub.cjs");
 const webEngine = require("../engine/web-page.cjs");
 
@@ -52,8 +53,15 @@ app.setAppUserModelId("com.pet.translator");
  * 就得重新扫码登录，很不讲道理。
  *
  * 这里钉死在开发期那个目录上，两边的设置、窗口位置、DeepSeek 分区共用一套。
+ *
+ * 例外：`PET_TR_USERDATA` 环境变量可以临时改到这个目录之外，**只给冒烟/自测用**。
+ * 单实例锁是按 userData 目录算的 —— 用户自己开着程序时，冒烟实例会被顶掉；
+ * 有了这个开关，就能另起一套干净的 profile 跑截图，不打扰正在用的那只球。
  */
-app.setPath("userData", join(app.getPath("appData"), "pet-translator-desktop"));
+app.setPath(
+  "userData",
+  process.env.PET_TR_USERDATA || join(app.getPath("appData"), "pet-translator-desktop"),
+);
 
 // 打包版没有控制台：把主进程日志同时写进 app.log，出问题时有东西可看。
 // 放在 setPath 之后 —— 日志文件必须落在固定下来的那个 userData 里。
@@ -179,6 +187,28 @@ async function onHotkey() {
   await pickAndTranslate();
 }
 
+/**
+ * 按当前设置（重新）注册全局热键。改键、开关热键都走它，保证只有一处逻辑。
+ * 返回 `hotkey.status()`，面板据此更新显示。
+ * @returns {{accelerator: string, ok: boolean, label: string, enabled: boolean}}
+ */
+function applyHotkey() {
+  const settings = store.read();
+  const enabled = settings.hotkeyEnabled !== false;
+  const accelerator = typeof settings.hotkey === "string" ? settings.hotkey : "Control+Alt+T";
+  if (!enabled) {
+    // 关闭：显式传空串，hotkey.register 会当成「关」而不是「注册失败」
+    hotkey.register("", onHotkey);
+    console.log("[pet-tr] hotkey disabled by user");
+    return hotkey.status();
+  }
+  const registered = hotkey.register(accelerator, () => {
+    onHotkey().catch((error) => console.warn("pet-tr: pickup failed:", String(error)));
+  });
+  console.log(`[pet-tr] hotkey ${accelerator} -> ${registered ? "ok" : "REJECTED (已被占用)"}`);
+  return hotkey.status();
+}
+
 /** 把渲染进程的控制台接出来，否则出错时只能看到一片空白窗口。 */
 function forwardRendererLogs() {
   const window = ball.getWindow();
@@ -300,6 +330,44 @@ function wireIpc() {
     }
   });
 
+  /* ── 热键改键 / 开关 ──────────────────────────────────────────────── */
+  ipcMain.handle("settings:set-hotkey", (_event, accelerator) => {
+    const wanted = typeof accelerator === "string" ? accelerator : "";
+    // 先校验形状，别把乱七八糟的东西写进设置文件
+    const check = hotkey.validate(wanted);
+    if (!check.ok) {
+      return { ok: false, reason: check.reason, status: hotkey.status() };
+    }
+    const normalized = hotkey.normalize(wanted);
+    if (normalized === "") return { ok: false, reason: "empty", status: hotkey.status() };
+
+    // 试注册：抢不到就直接说清楚，并把设置恢复成原来的（不影响正在用的热键）
+    const previous = hotkey.status();
+    const registered = hotkey.register(normalized, () => {
+      onHotkey().catch((error) => console.warn("pet-tr: pickup failed:", String(error)));
+    });
+    if (!registered) {
+      // 恢复旧热键
+      if (previous.enabled && previous.accelerator !== "") {
+        hotkey.register(previous.accelerator, () => {
+          onHotkey().catch((error) => console.warn("pet-tr: pickup failed:", String(error)));
+        });
+      } else {
+        hotkey.register("", onHotkey);
+      }
+      return { ok: false, reason: "conflict", status: hotkey.status() };
+    }
+    store.write({ hotkey: normalized, hotkeyEnabled: true });
+    return { ok: true, status: hotkey.status() };
+  });
+
+  ipcMain.handle("settings:set-hotkey-enabled", (_event, enabled) => {
+    const on = enabled === true;
+    store.write({ hotkeyEnabled: on });
+    applyHotkey();
+    return { ok: true, status: hotkey.status() };
+  });
+
   /* ── 开机自启 ─────────────────────────────────────────────────────── */
   ipcMain.handle("settings:set-look", (_event, look) => {
     const hex = (value, fallback) =>
@@ -389,6 +457,7 @@ function wireIpc() {
     ...ball.snapshot(),
     min: ball.MIN_SCALE,
     max: ball.MAX_SCALE,
+    scales: SCALES,
     panel: panel.bodySize(),
     engine: {
       id: engine.id,
@@ -401,6 +470,7 @@ function wireIpc() {
     targets: TARGETS,
     maxSource: MAX_SOURCE,
     hotkey: hotkey.status(),
+    hotkeyEnabled: store.read().hotkeyEnabled !== false,
     autostart: autostart.status(),
     panelOpen: panel.isVisible(),
     disableGpu: store.read().disableGpu === true,
@@ -528,6 +598,20 @@ async function runSmoke() {
     await wait(160);
   }
   const shot = process.env.PET_TR_SHOT ?? join(app.getPath("userData"), "smoke.png");
+  // 验收用：在面板里跑一段任意 JS（异步 OK），把返回值打到 stdout。
+  // 用来验证「改键」「开关」这类必须走真实渲染进程 + 真实 IPC 的交互。
+  const evalCode = process.env.PET_TR_EVAL;
+  if (typeof evalCode === "string" && evalCode !== "") {
+    const window = panel.getWindow();
+    if (window !== undefined && !window.isDestroyed()) {
+      try {
+        const value = await window.webContents.executeJavaScript(`(async () => { ${evalCode} })()`);
+        console.log("[pet-tr-eval] " + JSON.stringify(value ?? null));
+      } catch (error) {
+        console.log("[pet-tr-eval] ERROR " + String(error));
+      }
+    }
+  }
   try {
     const window = ball.getWindow();
     if (window !== undefined && !window.isDestroyed()) {
@@ -626,11 +710,7 @@ if (!app.requestSingleInstanceLock()) {
     );
 
     // 全局热键。注册失败要能告诉用户，而不是按了没反应
-    const accelerator = typeof store.read().hotkey === "string" ? store.read().hotkey : "Control+Alt+T";
-    const registered = hotkey.register(accelerator, () => {
-      onHotkey().catch((error) => console.warn("pet-tr: pickup failed:", String(error)));
-    });
-    console.log(`[pet-tr] hotkey ${accelerator} -> ${registered ? "ok" : "REJECTED (已被占用)"}`);
+    applyHotkey();
     pushEngineStatus();
 
     // --deepseek-login：直接把网页窗口摆出来，让人扫码/输手机号

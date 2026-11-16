@@ -12,10 +12,12 @@ src/
 │  ├─ deepseek-window.cjs  网页后端窗口：persist 分区、记住会话地址、诊断状态
 │  ├─ pickup.cjs           取词：剪贴板快照/还原 + 合成 Ctrl+C
 │  ├─ sendinput-helper.ps1 常驻按键器（PowerShell 子进程，走 stdin 收命令）
-│  ├─ hotkey.cjs           全局热键注册与「是否被占用」的报告
+│  ├─ hotkey.cjs           全局热键：注册 / 改键 / 关闭，加速键规整与合法性校验
 │  ├─ autostart.cjs        开机自启（默认关，只在打包版真正写启动项）
 │  ├─ tray.cjs             托盘与菜单
 │  └─ store.cjs            设置持久化（原子写 + BOM 容错 + 丢弃过期键）
+├─ shared/
+│  └─ scales.cjs           球的大小档位表（主进程两个菜单 + 设置面板共用，唯一真值）
 ├─ engine/
 │  ├─ web-page.cjs         方案 A 页面代理：开页 → 等输入框 → 填字 → 等稳定 → 发送 → 收译文
 │  ├─ page-scripts.cjs     注入页面的 DOM 脚本（选择器阶梯都在这里，改版只改这一处）

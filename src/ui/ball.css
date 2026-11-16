@@ -651,6 +651,50 @@ html[data-drag="1"] .ball {
   color: var(--tr-text);
 }
 
+/* 取词热键：平时长得像只读的 key chip，点一下进入录制。 */
+.hotkey-btn {
+  max-width: 62%;
+  padding: 3px 9px;
+  border-radius: 7px;
+  border: var(--tr-input-border);
+  background: var(--tr-select-bg);
+  color: var(--tr-text-control);
+  font: inherit;
+  font-size: var(--tr-fs-label);
+  cursor: pointer;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.hotkey-btn:hover {
+  border-color: var(--tr-status-ok);
+}
+
+/* 录制中：描边闪烁，明确告诉用户"在等你按键"。 */
+.hotkey-btn[data-recording="1"] {
+  border-color: var(--tr-status-ok);
+  color: var(--tr-status-ok);
+  animation: tr-hotkey-pulse 1s ease-in-out infinite;
+}
+
+@keyframes tr-hotkey-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* 热键提示条：正常/警告两色。 */
+#hotkey-note[data-tone="warn"] {
+  color: var(--tr-status-warn);
+}
+#hotkey-note[data-tone="ok"] {
+  color: var(--tr-status-ok);
+}
+
 .body {
   flex: 1;
   min-height: 0;

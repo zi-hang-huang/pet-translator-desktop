@@ -29,9 +29,11 @@ src/main/       主进程
   panel-geometry.cjs  纯函数几何，不 import electron，可以直接跑断言
   pickup.cjs          取词：剪贴板快照 → 合成 Ctrl+C → 轮询 → 还原
   sendinput-helper.ps1 常驻 PowerShell，用 SendKeys 发 Ctrl+C
-  hotkey.cjs          globalShortcut 封装
+  hotkey.cjs          globalShortcut 封装（注册 / 改键 / 关闭 / 加速键校验）
   deepseek-window.cjs 隐藏的 DeepSeek 网页窗口
   store.cjs           settings.json 读写
+src/shared/    主进程与渲染进程共用的小常量
+  scales.cjs          球的大小档位表（右键菜单、托盘、设置面板都读这一份）
 src/engine/    翻译后端（界面不知道后端是网页还是接口）
   web-page.cjs        编排：开页 → 填字 → 等稳定 → 发送 → 轮询 → 返回
   page-scripts.cjs    注入到远程页面的 DOM 脚本，网页改版只改这个文件
@@ -55,6 +57,17 @@ src/preload/   ball.cjs / panel.cjs，两套窄接口
 | `powershell -ExecutionPolicy Bypass -File scripts/e2e-pickup.ps1` | 端到端取词自测：记事本全选 → 程序取词 → 翻译 |
 | `$env:F="1.5"; npx electron scripts/probe-drag-dpi.cjs` | DPI 回归探针：连续 20 次拖动后，球与面板的宽高必须零漂移 |
 
+**改键 / 开关热键、球大小档位**这套交互验证用冒烟钩子跑，不需要单独写 Electron 脚本
+（探针脚本不走 `index.cjs`，拿不到 `ball:info` 等 IPC）：
+
+```powershell
+$env:PET_TR_PANEL="1"; $env:PET_TR_VIEW="settings"
+$env:PET_TR_USERDATA="$env:TEMP\tr-probe"          # 别碰真实 profile
+$env:PET_TR_EVAL=(Get-Content scripts\probe-hotkey-eval.js -Raw)
+npx electron . --smoke
+# stdout 里找 [pet-tr-eval] {"passed":12,"total":12,"ok":true}
+```
+
 `probe-deepseek.cjs` 里有 `app.setPath("userData", …\pet-translator-desktop)`，
 目的是和 App 共用 `persist:deepseek` 分区，否则它看到的是一套没登录的新页面。
 
@@ -74,6 +87,8 @@ src/preload/   ball.cjs / panel.cjs，两套窄接口
 | `PET_TR_STATE=listening\|busy\|error` | 强制球的静态状态 |
 | `PET_TR_ARMED=1` | 摆成「取词完成、等待确认」的样子 |
 | `PET_TR_SHOT=<路径>` | 截图落到哪里，面板会落到同名的 `-panel.png` |
+| `PET_TR_USERDATA=<目录>` | **另起一套干净 profile**（不改你正在用的那只球的设置）。用户自己开着程序时跑冒烟必须带它，否则单实例锁会把冒烟实例顶掉 |
+| `PET_TR_EVAL="<js>"` | 在面板渲染进程里跑一段 async JS，返回值打到 stdout 的 `[pet-tr-eval]`。验证必须走真实渲染进程 + 真实 IPC 的交互（改键、开关这类）就用它 |
 | `PET_TR_NO_GPU=1` | 透明窗口黑底时退回软件渲染 |
 
 ## 打包
@@ -140,8 +155,7 @@ GBK 解码首几行中文正常。要验证解析，复制一份脚本把真正�
 **不要用真实账号压测。** 连续几十次请求会触发服务端限流，冷却一百秒左右才恢复，
 排查期间很容易把限流当成 bug。
 
-**移动窗口只能用 `setBounds`，不能只用 `setPosition`。** 窗口宽 138 DIP 时，
-200% 缩放是 276 物理像素、整除，看不出问题；125% 是 172.5，那半个像素被进位，
+**移动窗口只能用 `setBounds`，不能只用 `setPosition`。** 窗口宽 138 DIP 时，200% 缩放是 276 物理像素、整除，看不出问题；125% 是 172.5，那半个像素被进位，
 于是每调用一次 `setPosition`，Windows 就把窗口矩形重新算大 1 DIP。拖动是按帧调用的，
 表现就是「按住鼠标球一直变大，松手就停」。`setBounds` 每次都带上 `width` / `height`，
 能把被撑大的尺寸拉回请求值。回归探针：`scripts/probe-drag-dpi.cjs`，
@@ -150,6 +164,17 @@ GBK 解码首几行中文正常。要验证解析，复制一份脚本把真正�
 **不要 `getPosition()` 读回来当输入。** 非整数缩放下系统回报的位置和请求值能差 1 DIP，
 一旦回流就会被下一次拖动继承，越拖越偏。球和面板都各自记着 `state.origin`
 （最后一次要求的位置），拖动拿它当原点，落盘也用它。
+
+**用户开着程序时，冒烟实例会被单实例锁顶掉。** 锁是按 userData 目录算的，而
+`app.setPath("userData", …)` 把路径钉死了 —— 于是自己另开一个 `--user-data-dir`
+没用，Electron 会在跑你那份 `index.cjs` 之前就覆盖掉它。要另起一套 profile 跑
+冒烟/截图，只能带 **`PET_TR_USERDATA=<目录>`**（`index.cjs` 里唯一认这个环境变量）。
+症状：冒烟进程秒退、stdout 空、截图不生成、日志里一行 `second instance blocked`。
+
+**改键后的热键不要拿 `globalShortcut` 直接测。** 测试机往往已经被别的程序占了这个
+组合，`register()` 返回 false 是正常结果，不是代码坏了。要断言「改键生效」应该看
+`settings.json` 里的 `hotkey` 值 + `hotkey.status()` 的 `accelerator`，而不是看
+`ok` 是不是 true。冒烟钩子 `PET_TR_EVAL` 里的 `probe-hotkey-eval.js` 就是这么判的。
 
 ## 日志
 

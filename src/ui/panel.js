@@ -35,7 +35,9 @@ const bannerEl = document.getElementById("banner");
 const bannerTextEl = document.getElementById("banner-text");
 const bannerActionEl = /** @type {HTMLButtonElement} */ (document.getElementById("banner-action"));
 const bannerCloseEl = document.getElementById("banner-close");
-const hotkeyValueEl = document.getElementById("hotkey-value");
+const hotkeyValueEl = /** @type {HTMLButtonElement} */ (document.getElementById("hotkey-value"));
+const hotkeyNoteEl = document.getElementById("hotkey-note");
+const hotkeyEnabledEl = document.getElementById("hotkey-enabled");
 const autostartEl = document.getElementById("autostart");
 const autostartNoteEl = document.getElementById("autostart-note");
 const disableGpuEl = document.getElementById("disable-gpu");
@@ -115,8 +117,14 @@ const state = {
   busySeconds: 0,
   maxSource: 4000,
   scale: 1,
+  /** 可选档位（主进程给，跟右键菜单/托盘同一份）。 */
+  scales: [0.6, 0.8, 1, 1.2, 1.5, 1.8],
   engine: null,
   hotkey: null,
+  /** 热键是否启用。 */
+  hotkeyEnabled: true,
+  /** 是否正在录制新热键（点一下按钮进入，按键后退出）。 */
+  recordingHotkey: false,
   autostart: null,
   disableGpu: false,
   panelColor: "#161a22",
@@ -469,11 +477,21 @@ function render() {
   renderBanner();
 
   if (state.hotkey !== null) {
-    hotkeyValueEl.textContent = state.hotkey.ok
-      ? state.hotkey.label
-      : `${state.hotkey.label}（注册失败，被别的软件占了）`;
-    hotkeyValueEl.style.color = state.hotkey.ok ? "" : "var(--tr-status-warn)";
+    if (state.recordingHotkey) {
+      // 录制中：提示用户按键，别把旧值盖回去
+    } else if (state.hotkeyEnabled === false) {
+      hotkeyValueEl.textContent = "已关闭";
+      hotkeyValueEl.style.color = "var(--tr-text-muted)";
+      hotkeyValueEl.title = "热键已关闭，点一下开启并设置";
+    } else {
+      hotkeyValueEl.textContent = state.hotkey.ok
+        ? state.hotkey.label
+        : `${state.hotkey.label}（被占用）`;
+      hotkeyValueEl.style.color = state.hotkey.ok ? "" : "var(--tr-status-warn)";
+      hotkeyValueEl.title = "点击后按下新的快捷键";
+    }
   }
+  hotkeyEnabledEl.checked = state.hotkeyEnabled !== false;
 
   disableGpuEl.checked = state.disableGpu === true;
   panelColorEl.value = state.panelColor;
@@ -640,6 +658,136 @@ function flashHint(text) {
     if (state.mode === "pick") render(); // 底栏换回引擎状态
   }, HINT_MS);
 }
+
+/** 把 KeyboardEvent 拼成 Electron 加速键写法（如 "Control+Alt+T"）。 */
+/** @param {KeyboardEvent} event @returns {string} */
+function eventToAccelerator(event) {
+  const mods = [];
+  if (event.ctrlKey) mods.push("Control");
+  if (event.altKey) mods.push("Alt");
+  if (event.shiftKey) mods.push("Shift");
+  if (event.metaKey) mods.push("Super");
+
+  // 主键：优先 event.code（跟键盘布局无关），映射到 Electron 认的名字
+  const code = event.code;
+  let key = "";
+  if (/^Key[A-Z]$/.test(code)) key = code.slice(3);
+  else if (/^Digit[0-9]$/.test(code)) key = code.slice(5);
+  else if (/^F([1-9]|1[0-9]|2[0-4])$/.test(code)) key = code;
+  else if (code === "Space") key = "Space";
+  else if (code === "Enter") key = "Return";
+  else if (code === "Escape") key = "Escape";
+  else if (code === "Tab") key = "Tab";
+  else if (code === "Backspace") key = "Backspace";
+  else if (code === "Delete") key = "Delete";
+  else if (code === "Insert") key = "Insert";
+  else if (code === "Home") key = "Home";
+  else if (code === "End") key = "End";
+  else if (code === "PageUp") key = "PageUp";
+  else if (code === "PageDown") key = "PageDown";
+  else if (code === "ArrowUp") key = "Up";
+  else if (code === "ArrowDown") key = "Down";
+  else if (code === "ArrowLeft") key = "Left";
+  else if (code === "ArrowRight") key = "Right";
+  else if (code === "PrintScreen") key = "PrintScreen";
+  else if (code === "Minus") key = "-";
+  else if (code === "Equal") key = "=";
+  else if (code === "Comma") key = ",";
+  else if (code === "Period") key = ".";
+  else if (code === "Slash") key = "/";
+  else if (code === "Semicolon") key = ";";
+  else if (code === "Quote") key = "'";
+  else if (code === "BracketLeft") key = "[";
+  else if (code === "BracketRight") key = "]";
+  else if (code === "Backslash") key = "\\";
+  else if (code === "Backquote") key = "`";
+  else return ""; // 不认识的主键：返回空，让调用方提示"换个键"
+
+  if (key === "") return "";
+  return [...mods, key].join("+");
+}
+
+/** 进入 / 退出录制热键。@param {boolean} on */
+function setRecordingHotkey(on) {
+  state.recordingHotkey = on;
+  hotkeyValueEl.dataset.recording = on ? "1" : "0";
+  hotkeyValueEl.textContent = on ? "按下新快捷键…" : state.hotkey?.label ?? "Ctrl+Alt+T";
+  hotkeyValueEl.style.color = "";
+  if (on) hotkeyNoteEl.hidden = true;
+}
+
+/** 用户录完一个组合键，落地成设置。@param {string} accelerator */
+async function commitHotkey(accelerator) {
+  const result = await api.setHotkey(accelerator);
+  if (result?.status !== undefined) state.hotkey = result.status;
+  if (result?.ok === true) {
+    hotkeyNoteEl.hidden = false;
+    hotkeyNoteEl.textContent = "已改好，立刻生效。";
+    hotkeyNoteEl.dataset.tone = "ok";
+  } else {
+    hotkeyNoteEl.hidden = false;
+    hotkeyNoteEl.dataset.tone = "warn";
+    hotkeyNoteEl.textContent =
+      result?.reason === "conflict"
+        ? "这个组合被别的软件占着，已经退回原来的键。换一个试试。"
+        : result?.reason === "reserved"
+          ? "Ctrl+Alt+Delete 是系统保留的，用不了。"
+          : result?.reason === "no-modifier"
+            ? "至少要带一个 Ctrl / Alt / Shift。"
+            : "这个键用不了，换一个试试。";
+  }
+  setRecordingHotkey(false);
+  render();
+}
+
+// 点按钮：进入录制；录制中再点一下 = 取消。
+hotkeyValueEl.addEventListener("click", () => {
+  if (state.recordingHotkey) {
+    setRecordingHotkey(false);
+    render();
+    return;
+  }
+  setRecordingHotkey(true);
+});
+
+// 录制时吃掉键盘事件：组合键直接落地，单独按 Esc 取消。
+// 用捕获阶段，抢在其它快捷键处理之前。
+document.addEventListener(
+  "keydown",
+  (event) => {
+    if (!state.recordingHotkey) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.code === "Escape" || event.code === "Esc") {
+      setRecordingHotkey(false);
+      render();
+      return;
+    }
+    const accelerator = eventToAccelerator(event);
+    if (accelerator === "") return; // 只按了修饰键或未知键，等下一个
+    // 只按了一个修饰键时 eventToAccelerator 会给出 "Control" 之类，过滤掉
+    if (["Control", "Alt", "Shift", "Super"].includes(accelerator)) return;
+    commitHotkey(accelerator);
+  },
+  true,
+);
+
+hotkeyEnabledEl.addEventListener("change", async () => {
+  const on = hotkeyEnabledEl.checked;
+  const result = await api.setHotkeyEnabled(on);
+  if (result?.status !== undefined) state.hotkey = result.status;
+  state.hotkeyEnabled = on;
+  if (on) {
+    hotkeyNoteEl.hidden = false;
+    hotkeyNoteEl.dataset.tone = "ok";
+    hotkeyNoteEl.textContent = state.hotkey?.ok === false ? "已开启，但这个组合被占用了，换一个。" : "已开启。";
+  } else {
+    hotkeyNoteEl.hidden = false;
+    hotkeyNoteEl.dataset.tone = "ok";
+    hotkeyNoteEl.textContent = "已关闭，取词热键不再响应。";
+  }
+  render();
+});
 
 /** @param {"translate" | "settings"} view */
 function setView(view) {
@@ -903,7 +1051,9 @@ function fillTargets() {
 }
 
 function fillScales() {
-  const values = [0.6, 0.8, 1, 1.2, 1.5, 1.8];
+  // 档位来自主进程（src/shared/scales.cjs），和右键菜单、托盘共用同一份，
+  // 别在这儿再写死一遍。
+  const values = state.scales;
   scaleEl.replaceChildren(
     ...values.map((value) => {
       const option = document.createElement("option");
@@ -1308,10 +1458,12 @@ api.onNotice((notice) => {
 
 api.info().then((info) => {
   if (typeof info?.scale === "number") state.scale = info.scale;
+  if (Array.isArray(info?.scales) && info.scales.length > 0) state.scales = info.scales;
   if (typeof info?.maxSource === "number") state.maxSource = info.maxSource;
   if (Array.isArray(info?.targets) && info.targets.length > 0) state.targets = info.targets;
   if (info?.engine !== undefined) state.engine = info.engine;
   if (info?.hotkey !== undefined) state.hotkey = info.hotkey;
+  if (typeof info?.hotkeyEnabled === "boolean") state.hotkeyEnabled = info.hotkeyEnabled;
   if (info?.autostart !== undefined) state.autostart = info.autostart;
   if (info?.disableGpu !== undefined) state.disableGpu = info.disableGpu === true;
   if (typeof info?.panelColor === "string") state.panelColor = info.panelColor;

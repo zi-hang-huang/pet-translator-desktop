@@ -55,6 +55,18 @@ contextBridge.exposeInMainWorld("petPanel", {
   /* ── 设置 ───────────────────────────────────────────────────────────── */
   /** @param {number} scale - 绝对倍率。 */
   setScale: (scale) => ipcRenderer.send("ball:scale-set", scale),
+  /**
+   * 改取词热键。传 Electron 加速键写法（如 "Control+Alt+T"）。
+   * @param {string} accelerator
+   * @returns {Promise<{ok: boolean, reason?: string, status: object}>}
+   */
+  setHotkey: (accelerator) => ipcRenderer.invoke("settings:set-hotkey", accelerator),
+  /**
+   * 开关取词热键（关掉就完全不注册）。
+   * @param {boolean} enabled
+   * @returns {Promise<{ok: boolean, status: object}>}
+   */
+  setHotkeyEnabled: (enabled) => ipcRenderer.invoke("settings:set-hotkey-enabled", enabled),
   /** @returns {Promise<object>} */
   autostartStatus: () => ipcRenderer.invoke("autostart:status"),
   /** @param {boolean} enabled */

@@ -12,6 +12,7 @@
 const { Menu, Tray, app, nativeImage } = require("electron");
 const { join } = require("node:path");
 const ball = require("./ball-window.cjs");
+const { SCALES } = require("../shared/scales.cjs");
 
 /** 面板的钩子，由 index.cjs 注入（托盘不该直接依赖面板模块）。 */
 const hooks = {
@@ -45,7 +46,6 @@ function icon() {
 /** 组装菜单（每次都重建，勾选状态才是当前值）。 */
 function buildMenu() {
   const snap = ball.snapshot();
-  const scales = [0.6, 0.8, 1, 1.2, 1.5, 1.8];
   return Menu.buildFromTemplate([
     {
       label: snap.visible ? "隐藏球" : "显示球",
@@ -64,7 +64,7 @@ function buildMenu() {
     },
     {
       label: "缩放",
-      submenu: scales.map((value) => ({
+      submenu: SCALES.map((value) => ({
         label: `${value.toFixed(1)}x`,
         type: "radio",
         checked: Math.abs(snap.scale - value) < 0.001,

@@ -106,8 +106,17 @@
           </div>
           <div class="field">
             <span>取词热键</span>
-            <span class="value" id="hotkey-value">Ctrl+Alt+T</span>
+            <button class="hotkey-btn" type="button" id="hotkey-value" title="点击后按下新的快捷键">Ctrl+Alt+T</button>
           </div>
+          <p class="tip" id="hotkey-note" hidden></p>
+          <div class="field">
+            <span>启用取词热键</span>
+            <label class="switch">
+              <input type="checkbox" id="hotkey-enabled" checked />
+              <span class="track"></span>
+            </label>
+          </div>
+          <p class="tip">改键：点右边的按钮，直接按新的组合键（必须带 Ctrl / Alt / Shift）。和别的软件撞了会提示，并自动退回原来的键。</p>
           <div class="field">
             <span>翻译引擎</span>
             <span class="value" id="engine-name">占位</span>

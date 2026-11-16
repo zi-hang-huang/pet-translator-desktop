@@ -14,15 +14,13 @@ const { app, BrowserWindow, Menu, screen } = require("electron");
 const { join } = require("node:path");
 const store = require("./store.cjs");
 const { collapsedLayout, clamp } = require("./panel-geometry.cjs");
+const { SCALES, MIN_SCALE, MAX_SCALE } = require("../shared/scales.cjs");
 
 /** 缩放 1.0 时的球直径（DIP），与 DESIGN.md 一致。 */
 const BASE_SIZE = 96;
 
 /** 球四周的留白比例：0.22 × 96 ≈ 21px，刚好装下按比例缩放的投影。 */
 const PAD_RATIO = 0.22;
-
-const MIN_SCALE = 0.6;
-const MAX_SCALE = 1.8;
 
 /** @param {number} s @returns {number} */
 function ballSize(s) {
@@ -318,7 +316,6 @@ function showContextMenu() {
   const window = state.window;
   if (window === undefined || window.isDestroyed()) return;
 
-  const scales = [0.6, 0.8, 1, 1.2, 1.5, 1.8];
   const menu = Menu.buildFromTemplate([
     {
       label: state.panelOpen?.() === true ? "收起面板" : "打开面板",
@@ -327,7 +324,7 @@ function showContextMenu() {
     { type: "separator" },
     {
       label: "缩放",
-      submenu: scales.map((value) => ({
+      submenu: SCALES.map((value) => ({
         label: `${value.toFixed(1)}x`,
         type: "radio",
         checked: Math.abs(state.scale - value) < 0.001,

@@ -23,6 +23,11 @@ const DEFAULTS = Object.freeze({
   pinned: true,
   /** 全局取词热键（M4 用）。 */
   hotkey: "Ctrl+Alt+T",
+  /**
+   * 热键是否启用。默认开。
+   * 关掉 = 完全不注册（`settings.json` 里的 hotkey 值仍然留着，重新打开时恢复）。
+   */
+  hotkeyEnabled: true,
   /** 目标语言（M3 用）。 */
   target: "auto",
   /** 复用的 DeepSeek 专用会话地址（空表示还没建，按新对话处理）。 */
